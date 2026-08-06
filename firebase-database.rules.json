@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "chats": {
+      "conversations": {
+        "$conversationId": {
+          ".read": "auth != null && (auth.token.role === 'admin' || data.child('userId').val() === auth.uid)",
+          ".write": false
+        }
+      },
+      "messages": {
+        "$conversationId": {
+          ".read": "auth != null && (auth.token.role === 'admin' || root.child('chats/conversations/' + $conversationId + '/userId').val() === auth.uid)",
+          ".write": false
+        }
+      },
+      "userIndex": {
+        "$userId": {
+          ".read": "auth != null && (auth.token.role === 'admin' || auth.uid === $userId)",
+          ".write": false
+        }
+      },
+      "typing": {
+        "$conversationId": {
+          ".read": "auth != null && (auth.token.role === 'admin' || root.child('chats/conversations/' + $conversationId + '/userId').val() === auth.uid)",
+          "$role": {
+            ".write": "auth != null && (auth.token.role === 'admin' || root.child('chats/conversations/' + $conversationId + '/userId').val() === auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}
