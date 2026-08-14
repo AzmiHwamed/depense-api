@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Expense } from './entities/expense.entity';
@@ -23,6 +23,8 @@ type WithConversion<T> = T & {
 
 @Injectable()
 export class ExpenseService {
+  private readonly logger = new Logger(ExpenseService.name);
+
   constructor(
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
@@ -72,12 +74,19 @@ export class ExpenseService {
       if (currencyId === user.currencyId) return 1;
 
       if (!rateCache.has(currencyId)) {
-        const { convertedAmount } = await this.currencyService.convert(
-          1,
-          currencyId,
-          user.currencyId,
-        );
-        rateCache.set(currencyId, convertedAmount);
+        try {
+          const { convertedAmount } = await this.currencyService.convert(
+            1,
+            currencyId,
+            user.currencyId,
+          );
+          rateCache.set(currencyId, convertedAmount);
+        } catch (error) {
+          this.logger.warn(
+            `Unable to convert expense currency ${currencyId} to ${user.currencyId}: ${(error as Error).message}`,
+          );
+          return null;
+        }
       }
       return rateCache.get(currencyId)!;
     };
@@ -110,25 +119,38 @@ export class ExpenseService {
       ...dto,
       amount: dto.amount.toString(),
       date: new Date(dto.date),
+      merchantLatitude: dto.merchantLatitude?.toString(),
+      merchantLongitude: dto.merchantLongitude?.toString(),
       userId,
     });
     const saved = await this.expenseRepo.save(expense);
 
-    this.emitExpenseNotification(saved);
+    this.emitExpenseNotification(
+      saved,
+      'Expense added',
+      `A new expense of ${saved.amount} was recorded${saved.shop ? ` at ${saved.shop}` : ''}`,
+      'expense.created',
+    );
 
     return this.attachConvertedAmount(userId, saved);
   }
-  private emitExpenseNotification(expense: Expense): void {
+  private emitExpenseNotification(
+    expense: Expense,
+    title: string,
+    body: string,
+    type: string,
+  ): void {
     this.eventEmitter.emit(
       NOTIFICATION_EVENT,
       new NotificationDispatchEvent(
-        'Expense added',
-        `A new expense of ${expense.amount} was recorded${expense.shop ? ` at ${expense.shop}` : ''}`,
+        title,
+        body,
         expense.userId,
         {
           expenseId: expense.id,
           amount: expense.amount,
           categoryId: expense.categoryId ?? '',
+          type,
         },
       ),
     );
@@ -210,6 +232,12 @@ export class ExpenseService {
     });
 
     const saved = await this.expenseRepo.save(expense);
+    this.emitExpenseNotification(
+      saved,
+      'Expense updated',
+      `Your expense${saved.shop ? ` at ${saved.shop}` : ''} was updated`,
+      'expense.updated',
+    );
     return this.attachConvertedAmount(userId, saved);
   }
 
@@ -219,6 +247,12 @@ export class ExpenseService {
       throw new NotFoundException('Expense not found');
     }
     await this.expenseRepo.remove(expense);
+    this.emitExpenseNotification(
+      expense,
+      'Expense deleted',
+      `Your expense of ${expense.amount}${expense.shop ? ` at ${expense.shop}` : ''} was deleted`,
+      'expense.deleted',
+    );
   }
 
   // ── Create from receipt ─────────────────────
@@ -245,13 +279,26 @@ export class ExpenseService {
     const expense = this.expenseRepo.create({
       amount: amount.toString(),
       description,
-      shop: receipt.merchant ?? undefined,
+      shop: dto.merchantName ?? receipt.merchant ?? undefined,
+      googlePlaceId: dto.googlePlaceId,
+      merchantAddress: dto.merchantAddress,
+      merchantLatitude: dto.merchantLatitude?.toString(),
+      merchantLongitude: dto.merchantLongitude?.toString(),
+      googleMapsUri: dto.googleMapsUri,
+      merchantMatchConfidence: dto.merchantMatchConfidence,
       date,
       categoryId,
       currencyId: await this.currencyService.findByCode(receipt.currency).then((currency) => currency.id),
       userId,
     });
     const saved = await this.expenseRepo.save(expense);
+
+    this.emitExpenseNotification(
+      saved,
+      'Expense added from receipt',
+      `An expense of ${saved.amount}${saved.shop ? ` at ${saved.shop}` : ''} was created from your receipt`,
+      'expense.created_from_receipt',
+    );
 
     // findOne already returns convertedAmount/convertedCurrencyId in the
     // user's home currency, so there's nothing extra to attach here.
@@ -289,21 +336,26 @@ export class ExpenseService {
         const rate = await getRate(expense.currencyId);
         return {
           expense,
-          amount: this.toConvertedAmount(expense.amount, rate) ?? 0,
+          amount: this.toConvertedAmount(expense.amount, rate),
         };
       }),
     );
 
+    const included = converted.filter(
+      (row): row is typeof row & { amount: number } => row.amount !== null,
+    );
+    const unconvertedCount = converted.length - included.length;
+
     const round2 = (n: number) => Math.round(n * 100) / 100;
 
-    const total = converted.reduce((sum, row) => sum + row.amount, 0);
+    const total = included.reduce((sum, row) => sum + row.amount, 0);
     const count = converted.length;
 
     const byCategoryMap = new Map<
       string,
       { categoryId: string | null; categoryName: string; categoryColor: string | null; total: number; count: number }
     >();
-    for (const { expense, amount } of converted) {
+    for (const { expense, amount } of included) {
       const key = expense.categoryId ?? '__uncategorized__';
       const entry = byCategoryMap.get(key) ?? {
         categoryId: expense.categoryId ?? null,
@@ -329,7 +381,7 @@ export class ExpenseService {
     };
 
     const byPeriodMap = new Map<string, { period: string; total: number; count: number }>();
-    for (const { expense, amount } of converted) {
+    for (const { expense, amount } of included) {
       const key = periodKey(expense.date);
       const entry = byPeriodMap.get(key) ?? { period: key, total: 0, count: 0 };
       entry.total += amount;
@@ -340,6 +392,8 @@ export class ExpenseService {
     return {
       total: round2(total),
       count,
+      convertedCount: included.length,
+      unconvertedCount,
       currencyId: user.currencyId ?? null,
       groupBy,
       byCategory: Array.from(byCategoryMap.values())

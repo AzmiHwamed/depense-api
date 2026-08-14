@@ -26,6 +26,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { User } from 'src/user/entities/user.entity';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { Translate } from 'src/translation/translate.decorator';
+import { CheckCountryDto } from './dto/check-country.dto';
 
 // Fields that should never go through the translation model.
 const NOTIFICATION_IGNORE_KEYS = [
@@ -50,6 +51,14 @@ export class NotificationController {
   @ApiResponse({ status: 201, description: 'Notification created', type: Notification })
   create(@CurrentUser() user: User, @Body() dto: CreateNotificationDto) {
     return this.service.create({ ...dto, userId: user.id });
+  }
+
+  @Post('check-country')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Compare the detected country with the user declared country' })
+  @ApiResponse({ status: 201, description: 'Country checked; notification created when different' })
+  checkCountry(@CurrentUser() user: User, @Body() dto: CheckCountryDto) {
+    return this.service.checkCurrentCountry(user, dto.detectedCountryCode);
   }
 
   @Get('me')
@@ -131,7 +140,7 @@ export class NotificationController {
   @ApiOperation({ summary: 'Unregister a device token (e.g. on logout)' })
   @ApiParam({ name: 'token', description: 'FCM device token' })
   @ApiResponse({ status: 200, description: 'Device token removed' })
-  removeDevice(@Param('token') token: string) {
-    return this.service.removeDeviceToken(token);
+  removeDevice(@CurrentUser() user: User, @Param('token') token: string) {
+    return this.service.removeDeviceToken(user.id, token);
   }
 }

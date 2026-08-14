@@ -19,6 +19,11 @@ import { IPaymentProviderStrategy } from './providers/payment-provider.interface
 import { UsersService } from 'src/user/user.service';
 import { CurrencyService } from 'src/currency/currency.service';
 import { SubscriptionStatus, User } from 'src/user/entities/user.entity';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  NOTIFICATION_EVENT,
+  NotificationDispatchEvent,
+} from 'src/notification/notification.events';
 
 @Injectable()
 export class PaymentService {
@@ -33,6 +38,7 @@ export class PaymentService {
     private readonly moyasarService: MoyasarService,
     private readonly userService: UsersService,
     private readonly currencyService: CurrencyService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private resolveProvider(currencyCode: string): {
@@ -180,7 +186,7 @@ export class PaymentService {
           ? PaymentStatus.FAILED
           : PaymentStatus.PENDING;
 
-    return this.paymentRepo.manager.transaction(async (manager) => {
+    const outcome = await this.paymentRepo.manager.transaction(async (manager) => {
       const lockedPayment = await manager.findOne(Payment, {
         where: { id: payment.id },
         relations: { plan: true },
@@ -193,7 +199,7 @@ export class PaymentService {
         lockedPayment.status === PaymentStatus.SUCCEEDED ||
         lockedPayment.status === PaymentStatus.FAILED
       ) {
-        return lockedPayment;
+        return { payment: lockedPayment, activated: false };
       }
 
       lockedPayment.status = newStatus;
@@ -217,7 +223,38 @@ export class PaymentService {
         await manager.save(User, user);
       }
 
-      return manager.save(Payment, lockedPayment);
+      const savedPayment = await manager.save(Payment, lockedPayment);
+      return {
+        payment: savedPayment,
+        activated: newStatus === PaymentStatus.SUCCEEDED,
+      };
     });
+
+    if (outcome.activated) {
+      this.eventEmitter.emit(
+        NOTIFICATION_EVENT,
+        new NotificationDispatchEvent(
+          'Payment successful',
+          `Your ${outcome.payment.plan.name} subscription is now active`,
+          outcome.payment.userId,
+          {
+            type: 'payment.succeeded',
+            paymentId: outcome.payment.id,
+            planId: outcome.payment.paymentPlanId,
+          },
+        ),
+      );
+    }
+
+    return outcome.payment;
+  }
+
+  async verifyUserPayment(userId: string, paymentId: string) {
+    const payment = await this.paymentRepo.findOne({
+      where: { id: paymentId, userId },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    return this.handleWebhook(payment.provider, payment.id);
   }
 }

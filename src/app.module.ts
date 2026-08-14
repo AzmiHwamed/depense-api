@@ -25,6 +25,8 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ReceiptsModule } from './receipts/receipts.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { InterpreterModule } from './interpreter/interpreter.module';
+import { ExploreModule } from './explore/explore.module';
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
@@ -78,6 +80,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     TranslationModule,
 
     ReceiptsModule,
+    InterpreterModule,
+    ExploreModule,
   ],
   providers: [
     {

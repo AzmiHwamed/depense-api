@@ -11,6 +11,11 @@ import { User } from 'src/user/entities/user.entity';
 import { CurrencyService } from 'src/currency/currency.service';
 import { ReceiptWithConversion } from './dto/receipt-with-conversion.dto';
 import { ExpenseCategory } from 'src/expense-category/entities/expense-category.entity';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  NOTIFICATION_EVENT,
+  NotificationDispatchEvent,
+} from 'src/notification/notification.events';
 
 @Injectable()
 export class ReceiptsService {
@@ -23,6 +28,7 @@ export class ReceiptsService {
     private readonly itemRepo: Repository<ReceiptItem>,
     private readonly extractionService: ReceiptExtractionService,
     private readonly currencyService: CurrencyService,
+    private readonly eventEmitter: EventEmitter2,
   ) { }
 
   /**
@@ -63,6 +69,26 @@ export class ReceiptsService {
   } as Partial<Receipt>);
 
   const saved = await this.receiptRepo.save(receipt);
+
+  // Anonymous extraction is supported, so only target a notification when an
+  // authenticated user is present. Never turn an anonymous extraction into a broadcast.
+  if (user?.id) {
+    this.eventEmitter.emit(
+      NOTIFICATION_EVENT,
+      new NotificationDispatchEvent(
+        'Receipt extracted',
+        `${saved.merchant ? `${saved.merchant} receipt` : 'Your receipt'} was extracted successfully`,
+        user.id,
+        {
+          type: 'receipt.extracted',
+          receiptId: saved.id,
+          merchant: saved.merchant ?? '',
+          total: saved.total == null ? '' : String(saved.total),
+          currency: saved.currency ?? '',
+        },
+      ),
+    );
+  }
 
   return this.withConvertedAmounts(saved, user);
 }

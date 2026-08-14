@@ -8,13 +8,34 @@ import { Repository } from 'typeorm';
 import { ExpenseCategory } from './entities/expense-category.entity';
 import { CreateExpenseCategoryDto } from './dto/create-expense-category.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  NOTIFICATION_EVENT,
+  NotificationDispatchEvent,
+} from 'src/notification/notification.events';
 
 @Injectable()
 export class ExpenseCategoryService {
   constructor(
     @InjectRepository(ExpenseCategory)
     private readonly categoryRepo: Repository<ExpenseCategory>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  private notify(
+    category: ExpenseCategory,
+    title: string,
+    body: string,
+    type: string,
+  ): void {
+    this.eventEmitter.emit(
+      NOTIFICATION_EVENT,
+      new NotificationDispatchEvent(title, body, category.userId, {
+        type,
+        categoryId: category.id,
+      }),
+    );
+  }
 
   async create(
     userId: string,
@@ -30,7 +51,14 @@ export class ExpenseCategoryService {
     }
 
     const category = this.categoryRepo.create({ ...dto, userId });
-    return this.categoryRepo.save(category);
+    const saved = await this.categoryRepo.save(category);
+    this.notify(
+      saved,
+      'Category created',
+      `The ${saved.name} expense category was created`,
+      'expense_category.created',
+    );
+    return saved;
   }
 
   async findAll(userId: string): Promise<ExpenseCategory[]> {
@@ -69,12 +97,25 @@ export class ExpenseCategoryService {
     }
 
     Object.assign(category, dto);
-    return this.categoryRepo.save(category);
+    const saved = await this.categoryRepo.save(category);
+    this.notify(
+      saved,
+      'Category updated',
+      `The ${saved.name} expense category was updated`,
+      'expense_category.updated',
+    );
+    return saved;
   }
 
   async remove(userId: string, id: string): Promise<void> {
     const category = await this.findOne(userId, id);
     await this.categoryRepo.remove(category);
+    this.notify(
+      category,
+      'Category deleted',
+      `The ${category.name} expense category was deleted`,
+      'expense_category.deleted',
+    );
     // Note: Expense.category has onDelete: 'CASCADE' at the DB level,
     // so removing a category also removes its expenses. Change that
     // if you'd rather block deletion when expenses still reference it.

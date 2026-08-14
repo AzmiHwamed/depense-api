@@ -6,6 +6,11 @@ import {
   IsUUID,
   IsDateString,
   MaxLength,
+  IsLatitude,
+  IsLongitude,
+  IsUrl,
+  Min,
+  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -51,4 +56,39 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsUUID()
   currencyId?: string;
+
+  @ApiPropertyOptional({ example: 'ChIJ...' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  googlePlaceId?: string;
+
+  @ApiPropertyOptional({ example: 'Mall of Gabès, Gabès, Tunisia' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  merchantAddress?: string;
+
+  @ApiPropertyOptional({ example: 33.8815 })
+  @IsOptional()
+  @IsLatitude()
+  merchantLatitude?: number;
+
+  @ApiPropertyOptional({ example: 10.0982 })
+  @IsOptional()
+  @IsLongitude()
+  merchantLongitude?: number;
+
+  @ApiPropertyOptional({ example: 'https://maps.google.com/?cid=...' })
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(2000)
+  googleMapsUri?: string;
+
+  @ApiPropertyOptional({ example: 91, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  merchantMatchConfidence?: number;
 }

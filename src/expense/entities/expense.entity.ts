@@ -69,6 +69,30 @@ export class Expense {
   @Column()
   shop: string;
 
+  @ApiPropertyOptional({ example: 'ChIJ...' })
+  @Column({ nullable: true, length: 255 })
+  googlePlaceId: string;
+
+  @ApiPropertyOptional({ example: 'Mall of Gabès, Gabès, Tunisia' })
+  @Column({ type: 'text', nullable: true })
+  merchantAddress: string;
+
+  @ApiPropertyOptional({ example: 33.8815 })
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  merchantLatitude: string;
+
+  @ApiPropertyOptional({ example: 10.0982 })
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  merchantLongitude: string;
+
+  @ApiPropertyOptional({ example: 'https://maps.google.com/?cid=...' })
+  @Column({ type: 'text', nullable: true })
+  googleMapsUri: string;
+
+  @ApiPropertyOptional({ example: 91, minimum: 0, maximum: 100 })
+  @Column({ type: 'smallint', nullable: true })
+  merchantMatchConfidence: number;
+
   @ApiProperty()
   @CreateDateColumn()
   createdAt: Date;

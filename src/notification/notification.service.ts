@@ -10,6 +10,8 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
 import { NOTIFICATION_EVENT, NotificationDispatchEvent } from './notification.events';
+import { Country } from 'src/country/entities/country.entity';
+import { User } from 'src/user/entities/user.entity';
 
 @Injectable()
 export class NotificationService {
@@ -20,9 +22,65 @@ export class NotificationService {
     private readonly notificationRepo: Repository<Notification>,
     @InjectRepository(DeviceToken)
     private readonly deviceTokenRepo: Repository<DeviceToken>,
+    @InjectRepository(Country)
+    private readonly countryRepo: Repository<Country>,
     @Inject('FIREBASE_MESSAGING')
     private readonly messaging: Messaging,
   ) {}
+
+  async checkCurrentCountry(user: User, detectedCountryCode: string) {
+    const detectedCountry = await this.countryRepo.findOne({
+      where: { alpha2Code: detectedCountryCode.trim().toUpperCase(), isActive: true },
+    });
+
+    if (!detectedCountry) {
+      throw new NotFoundException('Detected country is not available');
+    }
+
+    const declaredCountry = user.currentCountry;
+    const matches =
+      !!declaredCountry &&
+      declaredCountry.alpha2Code.toUpperCase() === detectedCountry.alpha2Code.toUpperCase();
+
+    if (matches) {
+      return { matches: true, declaredCountry, detectedCountry, notification: null };
+    }
+
+    const title = 'Country change detected';
+    const body = declaredCountry
+      ? `We noticed you are not currently in ${declaredCountry.name}. Do you want to change it to ${detectedCountry.name}?`
+      : `We noticed you are currently in ${detectedCountry.name}. Do you want to set it as your current country?`;
+
+    const recent = await this.findRecentForUser(user.id, 20);
+    const existing = recent.find(
+      (item) =>
+        item.data?.type === 'country_change_suggestion' &&
+        item.data?.detectedCountryId === detectedCountry.id &&
+        item.data?.declaredCountryId === (declaredCountry?.id ?? ''),
+    );
+
+    const notification =
+      existing ??
+      (await this.create(
+        {
+          userId: user.id,
+          title,
+          body,
+          data: {
+            type: 'country_change_suggestion',
+            declaredCountryId: declaredCountry?.id ?? '',
+            declaredCountryName: declaredCountry?.name ?? '',
+            detectedCountryId: detectedCountry.id,
+            detectedCountryName: detectedCountry.name,
+            detectedCountryCode: detectedCountry.alpha2Code,
+          },
+          sendPush: true,
+        },
+        NotificationSource.EVENT,
+      ));
+
+    return { matches: false, declaredCountry, detectedCountry, notification };
+  }
 
   // ---------- CRUD ----------
 
@@ -41,9 +99,23 @@ export class NotificationService {
     await this.notificationRepo.save(notification);
 
     if (dto.sendPush !== false) {
-      const result = await this.pushToUserOrBroadcast(dto.userId, dto.title, dto.body, dto.data);
-      notification.pushSent = result.sent;
-      await this.notificationRepo.save(notification);
+      try {
+        const result = await this.pushToUserOrBroadcast(
+          dto.userId,
+          dto.title,
+          dto.body,
+          dto.data,
+        );
+        notification.pushSent = result.sent;
+        await this.notificationRepo.save(notification);
+      } catch (error) {
+        // A temporary FCM outage must not discard the saved in-app notification
+        // or make the action that triggered it fail.
+        this.logger.error(
+          `Push delivery failed for notification ${notification.id}: ${(error as Error).message}`,
+          (error as Error).stack,
+        );
+      }
     }
 
     return notification;
@@ -53,6 +125,14 @@ export class NotificationService {
     return this.notificationRepo.find({
       where: userId ? { userId } : {},
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findRecentForUser(userId: string, limit = 50) {
+    return this.notificationRepo.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
     });
   }
 
@@ -79,7 +159,7 @@ export class NotificationService {
 
   // ---------- Device tokens ----------
 
-  async registerDeviceToken(dto: RegisterDeviceTokenDto) {
+  async registerDeviceToken(dto: RegisterDeviceTokenDto & { userId: string }) {
     const existing = await this.deviceTokenRepo.findOne({ where: { token: dto.token } });
     if (existing) {
       existing.userId = dto.userId;
@@ -89,8 +169,8 @@ export class NotificationService {
     return this.deviceTokenRepo.save(this.deviceTokenRepo.create(dto));
   }
 
-  async removeDeviceToken(token: string) {
-    await this.deviceTokenRepo.delete({ token });
+  async removeDeviceToken(userId: string, token: string) {
+    await this.deviceTokenRepo.delete({ userId, token });
     return { removed: true };
   }
 
@@ -98,16 +178,23 @@ export class NotificationService {
 
   @OnEvent(NOTIFICATION_EVENT)
   async handleDispatchEvent(event: NotificationDispatchEvent) {
-    await this.create(
-      {
-        userId: event.userId,
-        title: event.title,
-        body: event.body,
-        data: event.data,
-        sendPush: true,
-      },
-      NotificationSource.EVENT,
-    );
+    try {
+      await this.create(
+        {
+          userId: event.userId,
+          title: event.title,
+          body: event.body,
+          data: event.data,
+          sendPush: true,
+        },
+        NotificationSource.EVENT,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist dispatched notification: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+    }
   }
 
   // ---------- Push sending ----------

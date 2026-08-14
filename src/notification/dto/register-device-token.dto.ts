@@ -1,11 +1,14 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { DevicePlatform } from '../entities/device-token.entity';
 
 export class RegisterDeviceTokenDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'Set by the authenticated API endpoint; clients may omit it.',
+  })
+  @IsOptional()
   @IsString()
-  userId: string;
+  userId?: string;
 
   @ApiProperty()
   @IsString()

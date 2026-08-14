@@ -22,6 +22,7 @@ import { CountryService } from 'src/country/country.service';
 import { LanguageService } from 'src/language/language.service';
 import { Country } from 'src/country/entities/country.entity';
 import { Language } from 'src/language/entities/language.entity';
+import { Payment, PaymentStatus } from 'src/payment/entities/payment.entity';
 
 @Injectable()
 export class UsersService {
@@ -31,9 +32,44 @@ export class UsersService {
     @InjectRepository(User) private usersRepo: Repository<User>,
     @InjectRepository(Country) private countryRepo: Repository<Country>,
     @InjectRepository(Language) private languageRepo: Repository<Language>,
+    @InjectRepository(Payment) private paymentRepo: Repository<Payment>,
     private currencyService: CurrencyService,
     @Inject('FIREBASE_ADMIN') private firebaseApp: App,
   ) { }
+
+  private async repairMissingSubscriptionEnd(user: User): Promise<User> {
+    if (
+      user.subscriptionStatus !== SubscriptionStatus.ACTIVE ||
+      user.subscriptionEndsAt
+    ) {
+      return user;
+    }
+
+    const payments = await this.paymentRepo.find({
+      where: { userId: user.id, status: PaymentStatus.SUCCEEDED },
+      relations: { plan: true },
+      order: { createdAt: 'ASC' },
+    });
+
+    let calculatedEnd: Date | null = null;
+    for (const payment of payments) {
+      if (!payment.plan?.durationMonths) continue;
+      const paidAt = new Date(payment.createdAt);
+      const startsAt = calculatedEnd && calculatedEnd > paidAt
+        ? new Date(calculatedEnd)
+        : paidAt;
+      startsAt.setMonth(startsAt.getMonth() + payment.plan.durationMonths);
+      calculatedEnd = startsAt;
+    }
+
+    if (!calculatedEnd) return user;
+
+    user.subscriptionEndsAt = calculatedEnd;
+    if (calculatedEnd <= new Date()) {
+      user.subscriptionStatus = SubscriptionStatus.EXPIRED;
+    }
+    return this.usersRepo.save(user);
+  }
 
   /**
    * Stamps the user's role onto their Firebase ID token as a custom claim
@@ -122,7 +158,7 @@ export class UsersService {
         user.subscriptionStatus = SubscriptionStatus.EXPIRED;
         user = await this.usersRepo.save(user);
       }
-      return user;
+      return this.repairMissingSubscriptionEnd(user);
     }
 
     const defaultCurrency = await this.currencyService.findByCode('USD');
@@ -165,7 +201,7 @@ export class UsersService {
   async findOne(id: string): Promise<User> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException(`User ${id} not found`);
-    return user;
+    return this.repairMissingSubscriptionEnd(user);
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {

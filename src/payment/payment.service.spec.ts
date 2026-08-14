@@ -20,6 +20,7 @@ describe('PaymentService', () => {
   const moyasarService: any = { verifyPayment: jest.fn() };
   const usersService: any = {};
   const currencyService: any = {};
+  const eventEmitter: any = { emit: jest.fn() };
 
   const service = new PaymentService(
     paymentRepo,
@@ -29,6 +30,7 @@ describe('PaymentService', () => {
     moyasarService,
     usersService,
     currencyService,
+    eventEmitter,
   );
 
   beforeEach(() => jest.clearAllMocks());

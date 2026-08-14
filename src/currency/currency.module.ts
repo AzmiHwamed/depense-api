@@ -7,9 +7,10 @@ import { UsersService } from 'src/user/user.service';
 import { User } from 'src/user/entities/user.entity';
 import { Language } from 'src/language/entities/language.entity';
 import { Country } from 'src/country/entities/country.entity';
+import { Payment } from 'src/payment/entities/payment.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Currency, User , Country, Language])],
+  imports: [TypeOrmModule.forFeature([Currency, User, Country, Language, Payment])],
   providers: [CurrencyService , UsersService],
   controllers: [CurrencyController],
   exports: [CurrencyService],

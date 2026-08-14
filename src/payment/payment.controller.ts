@@ -23,6 +23,13 @@ export class PaymentController {
     return this.paymentService.initiatePayment(req.user.id, planId);
   }
 
+  @Post(':paymentId/verify')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard)
+  verifyPayment(@Param('paymentId') paymentId: string, @Req() req) {
+    return this.paymentService.verifyUserPayment(req.user.id, paymentId);
+  }
+
   // Konnect calls this with a GET request, appending payment_ref as a query param
   @Get('webhook/konnect')
   @ApiBearerAuth()
