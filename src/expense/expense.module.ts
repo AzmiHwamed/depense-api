@@ -9,10 +9,11 @@ import { UserModule } from 'src/user/user.module';
 import { User } from 'src/user/entities/user.entity';
 import { Receipt } from 'src/receipts/entities/receipt.entity';
 import { CurrencyModule } from 'src/currency/currency.module';
+import { Trip } from 'src/trip/entities/trip.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Expense, ExpenseCategory, Receipt, User]),
+    TypeOrmModule.forFeature([Expense, ExpenseCategory, Receipt, User, Trip]),
     FirebaseModule,
     UserModule,
     CurrencyModule,
@@ -21,4 +22,4 @@ import { CurrencyModule } from 'src/currency/currency.module';
   providers: [ExpenseService],
   exports: [ExpenseService, TypeOrmModule],
 })
-export class ExpenseModule { }
+export class ExpenseModule {}

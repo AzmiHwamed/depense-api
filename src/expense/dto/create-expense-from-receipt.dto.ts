@@ -36,6 +36,13 @@ export class CreateExpenseFromReceiptDto {
   amount?: number;
 
   @ApiPropertyOptional({
+    description: 'Currency of the amount override; defaults to the receipt currency',
+  })
+  @IsOptional()
+  @IsUUID()
+  amountCurrencyId?: string;
+
+  @ApiPropertyOptional({
     example: '2026-07-30',
     description: 'Optional date override (defaults to the receipt date)',
   })

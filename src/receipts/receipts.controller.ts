@@ -11,7 +11,10 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { FileInterceptor } from '@nestjs/platform-express';
 
@@ -29,12 +32,12 @@ import {
 import { ReceiptsService } from './receipts.service';
 import { UpdateReceiptDto } from './dto/update-receipt.dto';
 import { FindReceiptsQueryDto } from './dto/find-receipts-query.dto';
-import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard';
 import { Translate } from 'src/translation/translate.decorator';
 import { CurrentUser } from 'src/auth/current-user.decorator';
 import { User } from 'src/user/entities/user.entity';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
-
+import { MerchantMatchDto } from './dto/merchant-match.dto';
+import { MerchantMatchService } from './merchant-match.service';
 
 const RECEIPT_IGNORE_KEYS = [
   'id',
@@ -56,28 +59,41 @@ const RECEIPT_IGNORE_KEYS = [
   'createdAt',
   'updatedAt',
   'receiptId',
-  'rawText'
+  'rawText',
 ];
 
-
 @ApiTags('Receipts')
+@ApiBearerAuth()
+@UseGuards(FirebaseAuthGuard)
 @Controller('receipts')
 export class ReceiptsController {
-
   constructor(
     private readonly receiptsService: ReceiptsService,
-  ) { }
+    private readonly merchantMatchService: MerchantMatchService,
+  ) {}
 
+  @Post('merchant-match')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  )
+  @ApiOperation({
+    summary: 'Match an extracted merchant near the user device location',
+  })
+  matchMerchant(@Body() dto: MerchantMatchDto) {
+    return this.merchantMatchService.match(dto);
+  }
 
   @Post('extract')
   @UseInterceptors(FileInterceptor('image'))
-
   @ApiOperation({
     summary: 'Extract and save receipt from image',
   })
-
   @ApiConsumes('multipart/form-data')
-
   @ApiBody({
     schema: {
       type: 'object',
@@ -90,7 +106,6 @@ export class ReceiptsController {
       required: ['image'],
     },
   })
-  @UseGuards(OptionalFirebaseAuthGuard)
   async extract(
     @UploadedFile(
       new ParseFilePipeBuilder()
@@ -108,13 +123,10 @@ export class ReceiptsController {
     return this.receiptsService.extractAndSave(image, user);
   }
 
-
   @Post('receipt-recommendations/:receiptId')
   @ApiOperation({
     summary: 'Get category and description recommendations',
   })
-  @ApiBearerAuth()
-  @UseGuards(FirebaseAuthGuard)
   @ApiParam({
     name: 'receiptId',
     description: 'Receipt UUID',
@@ -131,104 +143,71 @@ export class ReceiptsController {
     @CurrentUser() user: User,
     @Param('receiptId') receiptId: string,
   ) {
-    return this.receiptsService.getReceiptRecommendations(
-      user.id,
-      receiptId,
-    );
+    return this.receiptsService.getReceiptRecommendations(user.id, receiptId);
   }
 
-
   @Get()
-  @ApiBearerAuth()
-  @UseGuards(OptionalFirebaseAuthGuard)
-
   @Translate({
     ignoreKeys: RECEIPT_IGNORE_KEYS,
   })
-
   @ApiOperation({
     summary: 'List all receipts translated',
   })
-
   @ApiQuery({
     type: FindReceiptsQueryDto,
   })
-
   @ApiResponse({
     status: 200,
     description: 'List of receipts',
   })
-
-  findAll(
-  ) {
-    return this.receiptsService.findAll();
+  findAll(@CurrentUser() user: User) {
+    return this.receiptsService.findAll(user.id);
   }
 
-
-
   @Get(':id')
-  @ApiBearerAuth()
-  @UseGuards(OptionalFirebaseAuthGuard)
   @Translate({
     ignoreKeys: RECEIPT_IGNORE_KEYS,
   })
-
   @ApiOperation({
     summary: 'Get receipt translated',
   })
-
   @ApiParam({
     name: 'id',
     description: 'Receipt UUID',
   })
-
   @ApiResponse({
     status: 200,
     description: 'Receipt found',
   })
-
-  findOne(
-    @Param('id') id: string,
-  ) {
-    return this.receiptsService.findOne(id);
+  findOne(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.receiptsService.findOne(user.id, id);
   }
 
-
-
   @Patch(':id')
-
   @ApiOperation({
     summary: 'Update receipt',
   })
-
   @ApiParam({
     name: 'id',
     description: 'Receipt UUID',
   })
-
   update(
+    @CurrentUser() user: User,
     @Param('id') id: string,
     @Body() dto: UpdateReceiptDto,
   ) {
-    return this.receiptsService.update(id, dto);
+    return this.receiptsService.update(user.id, id, dto);
   }
 
-
-
   @Delete(':id')
-
   @ApiOperation({
     summary: 'Delete receipt',
   })
-
   @ApiParam({
     name: 'id',
     description: 'Receipt UUID',
   })
-
-  remove(
-    @Param('id') id: string,
-  ) {
-    return this.receiptsService.remove(id);
+  remove(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.receiptsService.remove(user.id, id);
   }
 }

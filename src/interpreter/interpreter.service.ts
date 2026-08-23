@@ -20,6 +20,24 @@ export class InterpreterService {
     private readonly ai: InterpreterAiService,
   ) {}
 
+  /** Process one guest turn entirely in memory; no conversation, audio, or text is persisted. */
+  async processGuestTurn(dto: CreateInterpreterTurnDto, file: Express.Multer.File) {
+    const sourceText = await this.ai.transcribe(file, dto.sourceLanguage);
+    const translatedText = await this.ai.translate(sourceText, dto.sourceLanguage, dto.targetLanguage);
+    const translatedAudio = await this.ai.synthesize(translatedText, dto.targetLanguage);
+    return {
+      id: `guest-${randomUUID()}`,
+      ...dto,
+      sourceText,
+      translatedText,
+      sourceAudioUrl: '',
+      translatedAudioUrl: `data:${translatedAudio.mimeType};base64,${translatedAudio.audio.toString('base64')}`,
+      sourceMimeType: file.mimetype,
+      translatedMimeType: translatedAudio.mimeType,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   create(user: User, dto: CreateInterpreterConversationDto) {
     return this.conversations.save(this.conversations.create({ ...dto, title: dto.title ?? null, userId: user.id }));
   }

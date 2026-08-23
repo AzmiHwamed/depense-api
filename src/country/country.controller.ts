@@ -26,6 +26,8 @@ import { Country } from './entities/country.entity';
 import { Translate } from 'src/translation/translate.decorator';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard';
+import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
+import { AdminGuard } from 'src/auth/admin.guard';
 
 const COUNTRY_IGNORE_KEYS = [
   'id',
@@ -67,6 +69,8 @@ export class CountryController {
   }
 
   @Post()
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ResponseMessage('Country created')
   @ApiOperation({ summary: 'Create country' })
   @ApiResponse({ status: 201, type: Country })
@@ -75,6 +79,8 @@ export class CountryController {
   }
 
   @Patch(':id')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ResponseMessage('Country updated')
   @ApiOperation({ summary: 'Update country' })
   @ApiResponse({ status: 200, type: Country })
@@ -83,6 +89,8 @@ export class CountryController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ResponseMessage('Country deleted')
   @ApiOperation({ summary: 'Delete country' })
   remove(@Param('id') id: string) {

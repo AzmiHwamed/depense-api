@@ -21,12 +21,14 @@ import { LanguageModule } from './language/language.module';
 import { NotificationModule } from './notification/notification.module';
 import { TranslationModule } from './translation/translation.module';
 import { ResponseFormatInterceptor } from './common/decorators/response-format.interceptor';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ReceiptsModule } from './receipts/receipts.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { InterpreterModule } from './interpreter/interpreter.module';
 import { ExploreModule } from './explore/explore.module';
+import { TripModule } from './trip/trip.module';
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
@@ -44,6 +46,13 @@ import { ExploreModule } from './explore/explore.module';
       max: 100,
       isGlobal: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -82,8 +91,13 @@ import { ExploreModule } from './explore/explore.module';
     ReceiptsModule,
     InterpreterModule,
     ExploreModule,
+    TripModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: ResponseFormatInterceptor,
@@ -94,4 +108,4 @@ import { ExploreModule } from './explore/explore.module';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

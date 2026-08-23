@@ -9,7 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CurrencyService } from './currency.service';
 import { CreateCurrencyDto } from './dto/create-currency.dto';
 import { UpdateCurrencyDto } from './dto/update-currency.dto';
@@ -17,6 +22,8 @@ import { ConvertDto } from './dto/convert.dto';
 import { Currency } from './entities/currency.entity';
 import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard';
 import { Translate } from 'src/translation/translate.decorator';
+import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
+import { AdminGuard } from 'src/auth/admin.guard';
 
 const CURRENCY_IGNORE_KEYS = [
   'id',
@@ -64,6 +71,8 @@ export class CurrencyController {
   }
 
   @Post()
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Create a new currency' })
   @ApiResponse({ status: 201, type: Currency })
   create(@Body() dto: CreateCurrencyDto) {
@@ -71,6 +80,8 @@ export class CurrencyController {
   }
 
   @Patch(':id')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Update a currency by DB id' })
   @ApiResponse({ status: 200, type: Currency })
   update(@Param('id') id: string, @Body() dto: UpdateCurrencyDto) {
@@ -78,6 +89,8 @@ export class CurrencyController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Delete a currency by DB id' })
   remove(@Param('id') id: string) {
     return this.currencyService.remove(id);

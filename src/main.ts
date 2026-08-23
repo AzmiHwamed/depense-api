@@ -1,9 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Nginx is the only trusted reverse proxy in production. This makes request
+  // throttling use the visitor IP from X-Forwarded-For instead of grouping all
+  // traffic under the proxy's 127.0.0.1 address.
+  app.set('trust proxy', 'loopback');
 
   const config = new DocumentBuilder()
     .setTitle('Translate App API')

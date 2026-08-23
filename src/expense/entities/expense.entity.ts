@@ -1,6 +1,7 @@
 import { User } from 'src/user/entities/user.entity';
 import { ExpenseCategory } from 'src/expense-category/entities/expense-category.entity';
 import { Currency } from 'src/currency/entities/currency.entity';
+import { Trip } from 'src/trip/entities/trip.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Entity,
@@ -64,6 +65,14 @@ export class Expense {
   @ApiProperty({ example: 'a1b2c3d4-1234-4a5b-8c9d-abcdef123456' })
   @Column()
   userId: string;
+
+  @ApiPropertyOptional({ example: 'd4e5f6a7-1234-4a5b-8c9d-abcdef123456' })
+  @ManyToOne(() => Trip, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'tripId' })
+  trip: Trip;
+
+  @Column({ nullable: true })
+  tripId: string;
 
   @ApiProperty({ example: 'Ferdaws Market' })
   @Column()

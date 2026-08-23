@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Expense } from './entities/expense.entity';
@@ -13,8 +18,12 @@ import {
 import { User } from 'src/user/entities/user.entity';
 import { CurrencyService } from 'src/currency/currency.service'; // ASSUMED — swap for your real conversion service if the name/method differs
 import { Receipt } from 'src/receipts/entities/receipt.entity';
+import { Trip } from 'src/trip/entities/trip.entity';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { NOTIFICATION_EVENT, NotificationDispatchEvent } from 'src/notification/notification.events';
+import {
+  NOTIFICATION_EVENT,
+  NotificationDispatchEvent,
+} from 'src/notification/notification.events';
 
 type WithConversion<T> = T & {
   convertedAmount: number | null;
@@ -34,10 +43,11 @@ export class ExpenseService {
     private readonly receiptRepo: Repository<Receipt>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Trip)
+    private readonly tripRepo: Repository<Trip>,
     private readonly currencyService: CurrencyService,
     private readonly eventEmitter: EventEmitter2,
-
-  ) { }
+  ) {}
 
   private async assertCategoryOwnership(
     userId: string,
@@ -59,6 +69,15 @@ export class ExpenseService {
     return user;
   }
 
+  private async assertTripOwnership(
+    userId: string,
+    tripId?: string,
+  ): Promise<void> {
+    if (!tripId) return;
+    const trip = await this.tripRepo.findOne({ where: { id: tripId, userId } });
+    if (!trip) throw new NotFoundException('Trip not found');
+  }
+
   /**
    * Returns a resolver that, given an expense's currencyId, returns the rate
    * to multiply by to get that amount in the user's home currency (or null
@@ -66,10 +85,14 @@ export class ExpenseService {
    * Caches one lookup per distinct currency so batch operations (findAll,
    * statistics) don't call the conversion service once per row.
    */
-  private getRateResolver(user: User): (currencyId: string | null | undefined) => Promise<number | null> {
+  private getRateResolver(
+    user: User,
+  ): (currencyId: string | null | undefined) => Promise<number | null> {
     const rateCache = new Map<string, number>();
 
-    return async (currencyId: string | null | undefined): Promise<number | null> => {
+    return async (
+      currencyId: string | null | undefined,
+    ): Promise<number | null> => {
       if (!user.currencyId || !currencyId) return null;
       if (currencyId === user.currencyId) return 1;
 
@@ -92,7 +115,10 @@ export class ExpenseService {
     };
   }
 
-  private toConvertedAmount(amount: string | number, rate: number | null): number | null {
+  private toConvertedAmount(
+    amount: string | number,
+    rate: number | null,
+  ): number | null {
     if (rate === null) return null;
     return Math.round(Number(amount) * rate * 100) / 100;
   }
@@ -112,8 +138,12 @@ export class ExpenseService {
     };
   }
 
-  async create(userId: string, dto: CreateExpenseDto): Promise<WithConversion<Expense>> {
+  async create(
+    userId: string,
+    dto: CreateExpenseDto,
+  ): Promise<WithConversion<Expense>> {
     await this.assertCategoryOwnership(userId, dto.categoryId);
+    await this.assertTripOwnership(userId, dto.tripId);
 
     const expense = this.expenseRepo.create({
       ...dto,
@@ -142,21 +172,19 @@ export class ExpenseService {
   ): void {
     this.eventEmitter.emit(
       NOTIFICATION_EVENT,
-      new NotificationDispatchEvent(
-        title,
-        body,
-        expense.userId,
-        {
-          expenseId: expense.id,
-          amount: expense.amount,
-          categoryId: expense.categoryId ?? '',
-          type,
-        },
-      ),
+      new NotificationDispatchEvent(title, body, expense.userId, {
+        expenseId: expense.id,
+        amount: expense.amount,
+        categoryId: expense.categoryId ?? '',
+        type,
+      }),
     );
   }
 
-  async findAll(userId: string, query: ExpenseQueryDto): Promise<WithConversion<Expense>[]> {
+  async findAll(
+    userId: string,
+    query: ExpenseQueryDto,
+  ): Promise<WithConversion<Expense>[]> {
     const qb = this.expenseRepo
       .createQueryBuilder('expense')
       .leftJoinAndSelect('expense.category', 'category')
@@ -167,6 +195,9 @@ export class ExpenseService {
       qb.andWhere('expense.categoryId = :categoryId', {
         categoryId: query.categoryId,
       });
+    }
+    if (query.tripId) {
+      qb.andWhere('expense.tripId = :tripId', { tripId: query.tripId });
     }
     if (query.startDate) {
       qb.andWhere('expense.date >= :startDate', {
@@ -224,6 +255,9 @@ export class ExpenseService {
     if (dto.categoryId) {
       await this.assertCategoryOwnership(userId, dto.categoryId);
     }
+    if (dto.tripId !== undefined) {
+      await this.assertTripOwnership(userId, dto.tripId);
+    }
 
     Object.assign(expense, {
       ...dto,
@@ -258,10 +292,16 @@ export class ExpenseService {
   // ── Create from receipt ─────────────────────
   async createFromReceipt(userId: string, dto: CreateExpenseFromReceiptDto) {
     const receipt = await this.receiptRepo.findOne({
-      where: { id: dto.receiptId },
+      where: { id: dto.receiptId, userId },
     });
     if (!receipt) {
       throw new NotFoundException('Receipt not found');
+    }
+    const user = await this.getUserOrThrow(userId);
+    if (dto.amountCurrencyId && dto.amountCurrencyId !== user.currencyId) {
+      throw new BadRequestException(
+        'The amount override currency must match the authenticated user currency.',
+      );
     }
 
     const categoryId = dto.categoryId ?? null;
@@ -288,7 +328,11 @@ export class ExpenseService {
       merchantMatchConfidence: dto.merchantMatchConfidence,
       date,
       categoryId,
-      currencyId: await this.currencyService.findByCode(receipt.currency).then((currency) => currency.id),
+      currencyId: dto.amountCurrencyId
+        ? (await this.currencyService.findOne(dto.amountCurrencyId)).id
+        : await this.currencyService
+            .findByCode(receipt.currency)
+            .then((currency) => currency.id),
       userId,
     });
     const saved = await this.expenseRepo.save(expense);
@@ -353,7 +397,13 @@ export class ExpenseService {
 
     const byCategoryMap = new Map<
       string,
-      { categoryId: string | null; categoryName: string; categoryColor: string | null; total: number; count: number }
+      {
+        categoryId: string | null;
+        categoryName: string;
+        categoryColor: string | null;
+        total: number;
+        count: number;
+      }
     >();
     for (const { expense, amount } of included) {
       const key = expense.categoryId ?? '__uncategorized__';
@@ -380,7 +430,10 @@ export class ExpenseService {
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
     };
 
-    const byPeriodMap = new Map<string, { period: string; total: number; count: number }>();
+    const byPeriodMap = new Map<
+      string,
+      { period: string; total: number; count: number }
+    >();
     for (const { expense, amount } of included) {
       const key = periodKey(expense.date);
       const entry = byPeriodMap.get(key) ?? { period: key, total: 0, count: 0 };

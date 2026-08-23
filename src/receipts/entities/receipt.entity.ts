@@ -2,16 +2,28 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { ReceiptItem } from './receipt-item.entity';
+import { User } from 'src/user/entities/user.entity';
 
 @Entity('receipts')
 export class Receipt {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index()
+  @Column({ nullable: true })
+  userId: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: User | null;
 
   // --- fields returned by the Gemini Receipt OCR service ---
   @Column({ nullable: true, default: 'receipt' })
@@ -21,43 +33,43 @@ export class Receipt {
   language: string;
 
   @Column({ nullable: true })
-  country: string ;
+  country: string;
 
   @Column({ nullable: true })
-  merchant: string ;
+  merchant: string;
 
   @Column({ type: 'text', nullable: true })
-  address: string ;
+  address: string;
 
   @Column({ nullable: true })
-  phone: string ;
+  phone: string;
 
   @Column({ nullable: true })
-  invoiceNumber: string ;
+  invoiceNumber: string;
 
   @Column({ nullable: true })
-  date: string ;
+  date: string;
 
   @Column({ nullable: true })
-  time: string ;
+  time: string;
 
   @Column({ nullable: true })
-  currency: string ;
+  currency: string;
 
   @Column({ type: 'float', nullable: true })
-  subtotal: number ;
+  subtotal: number;
 
   @Column({ type: 'float', nullable: true })
-  tax: number ;
+  tax: number;
 
   @Column({ type: 'float', nullable: true })
-  total: number ;
+  total: number;
 
   @Column({ nullable: true })
-  paymentMethod: string ;
+  paymentMethod: string;
 
   @Column({ type: 'text', nullable: true })
-  rawText: string ;
+  rawText: string;
 
   @OneToMany(() => ReceiptItem, (item) => item.receipt, {
     cascade: true,
@@ -67,10 +79,10 @@ export class Receipt {
 
   // --- bookkeeping / provenance ---
   @Column({ nullable: true })
-  originalFileName: string ;
+  originalFileName: string;
 
   @Column({ nullable: true })
-  imageMimeType: string ;
+  imageMimeType: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -1,4 +1,11 @@
-import { Injectable, UnauthorizedException, BadRequestException, Inject, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  Inject,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { App } from 'node_modules/firebase-admin/lib/app/core';
@@ -9,13 +16,20 @@ import { Cache } from 'cache-manager';
 import { getAuth } from 'firebase-admin/auth';
 import { MailerService } from '@nestjs-modules/mailer';
 
-
 // key helpers, kept in one place so TTLs/prefixes can't drift between methods
 const otpKey = (email: string) => `pwreset:otp:${email.toLowerCase()}`;
 const tokenKey = (email: string) => `pwreset:token:${email.toLowerCase()}`;
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 min to enter the emailed OTP
 const RESET_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 min to complete the reset
+const RESET_SEND_LIMIT = 3;
+const RESET_SEND_WINDOW_MS = 15 * 60 * 1000;
+const OTP_ATTEMPT_LIMIT = 5;
+const RESET_TOKEN_ATTEMPT_LIMIT = 5;
+
+const normalizedEmail = (email: string) => email.trim().toLowerCase();
+const resetKey = (stage: string, email: string) =>
+  `pwreset:${stage}:${normalizedEmail(email)}`;
 
 function generateFourDigitCode(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -28,8 +42,6 @@ interface FirebaseAuthResponse {
   email: string;
 }
 
-
-
 @Injectable()
 export class AuthService {
   private readonly apiKey: string;
@@ -41,8 +53,6 @@ export class AuthService {
     @InjectRepository(User) private usersRepo: Repository<User>,
     @Inject('FIREBASE_ADMIN') private firebaseApp: App,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-
-
   ) {
     this.apiKey = this.config.get<string>('FIREBASE_WEB_API_KEY')!;
   }
@@ -59,6 +69,27 @@ export class AuthService {
     return Math.floor(
       Math.pow(10, length - 1) + Math.random() * 9 * Math.pow(10, length - 1),
     ).toString();
+  }
+
+  private async recordAttempt(
+    stage: string,
+    email: string,
+    limit: number,
+    ttl: number,
+  ): Promise<void> {
+    const key = resetKey(stage, email);
+    const attempts = (await this.cacheManager.get<number>(key)) ?? 0;
+    if (attempts >= limit) {
+      throw new HttpException(
+        'Too many attempts. Please try again later.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    await this.cacheManager.set(key, attempts + 1, ttl);
+  }
+
+  private async clearAttempts(stage: string, email: string): Promise<void> {
+    await this.cacheManager.del(resetKey(stage, email));
   }
 
   private resetOtpEmailTemplate(code: string): string {
@@ -119,7 +150,15 @@ export class AuthService {
 
   // Step 1: verify the email belongs to an account, email a 4-digit code
   async send_reset_mail(email: string) {
-    const user = await this.usersRepo.findOneBy({ email });
+    await this.recordAttempt(
+      'send-attempts',
+      email,
+      RESET_SEND_LIMIT,
+      RESET_SEND_WINDOW_MS,
+    );
+
+    const normalized = normalizedEmail(email);
+    const user = await this.usersRepo.findOneBy({ email: normalized });
 
     if (!user) {
       // Same generic response regardless — don't let this endpoint
@@ -133,7 +172,11 @@ export class AuthService {
 
     const code = this.generateCode();
 
-    await this.cacheManager.set(`reset:step1:${email}`, code, 1000 * 60 * 5); // 5 min
+    await this.cacheManager.set(
+      resetKey('step1', normalized),
+      code,
+      OTP_TTL_MS,
+    );
 
     await this.mailerService.sendMail({
       to: email,
@@ -150,40 +193,60 @@ export class AuthService {
 
   // Step 2: check the code, issue a resetPassToken (also 4 digits)
   async validate_reset_mail(email: string, code: string) {
-    const cachedCode = await this.cacheManager.get<string>(`reset:step1:${email}`);
+    await this.recordAttempt(
+      'otp-attempts',
+      email,
+      OTP_ATTEMPT_LIMIT,
+      OTP_TTL_MS,
+    );
+    const cachedCode = await this.cacheManager.get<string>(
+      resetKey('step1', email),
+    );
 
     if (!cachedCode || cachedCode !== code) {
       throw new BadRequestException('رمز التحقق غير صحيح');
     }
 
     // single-use: burn it now that it's been checked
-    await this.cacheManager.del(`reset:step1:${email}`);
+    await this.cacheManager.del(resetKey('step1', email));
+    await this.clearAttempts('otp-attempts', email);
 
     const resetPassToken = this.generateCode();
 
     await this.cacheManager.set(
-      `reset:step2:${email}`,
+      resetKey('step2', email),
       resetPassToken,
       1000 * 60 * 10, // 10 min
     );
 
-    return this.response(
-      200,
-      'تم التحقق',
-      'تم التحقق من الرمز بنجاح',
-      { resetPassToken },
-    );
+    return this.response(200, 'تم التحقق', 'تم التحقق من الرمز بنجاح', {
+      resetPassToken,
+    });
   }
 
   // Step 3: verify resetPassToken, then actually reset the password via Firebase
-  async reset_password(email: string, newPassword: string, resetPassToken: string) {
-    const cachedToken = await this.cacheManager.get<string>(`reset:step2:${email}`);
+  async reset_password(
+    email: string,
+    newPassword: string,
+    resetPassToken: string,
+  ) {
+    await this.recordAttempt(
+      'token-attempts',
+      email,
+      RESET_TOKEN_ATTEMPT_LIMIT,
+      RESET_TOKEN_TTL_MS,
+    );
+    const cachedToken = await this.cacheManager.get<string>(
+      resetKey('step2', email),
+    );
 
     if (!cachedToken || cachedToken !== resetPassToken) {
       throw new BadRequestException('رمز إعادة التعيين غير صالح');
     }
 
-    const user = await this.usersRepo.findOneBy({ email });
+    const user = await this.usersRepo.findOneBy({
+      email: normalizedEmail(email),
+    });
     if (!user) {
       throw new BadRequestException('المستخدم غير موجود');
     }
@@ -193,11 +256,11 @@ export class AuthService {
     });
 
     // single-use
-    await this.cacheManager.del(`reset:step2:${email}`);
+    await this.cacheManager.del(resetKey('step2', email));
+    await this.clearAttempts('token-attempts', email);
 
     return this.response(200, 'تم التحديث', 'تم تغيير كلمة المرور بنجاح');
   }
-
 
   // ── Email/Password Sign Up ──────────────
   async register(email: string, password: string) {
@@ -211,7 +274,10 @@ export class AuthService {
     );
 
     const data = await res.json();
-    if (!res.ok) throw new BadRequestException(data.error?.message ?? 'Registration failed');
+    if (!res.ok)
+      throw new BadRequestException(
+        data.error?.message ?? 'Registration failed',
+      );
     return data as FirebaseAuthResponse;
   }
 
@@ -227,12 +293,19 @@ export class AuthService {
     );
 
     const data = await res.json();
-    if (!res.ok) throw new UnauthorizedException(data.error?.message ?? 'Invalid credentials');
+    if (!res.ok)
+      throw new UnauthorizedException(
+        data.error?.message ?? 'Invalid credentials',
+      );
     return data as FirebaseAuthResponse;
   }
 
   // ── Google / Facebook (OAuth) Login ─────
-  async loginWithIdp(provider: 'google.com' | 'facebook.com', idpToken: string, requestUri: string) {
+  async loginWithIdp(
+    provider: 'google.com' | 'facebook.com',
+    idpToken: string,
+    requestUri: string,
+  ) {
     // idpToken = the access_token or id_token obtained from Google/Facebook's own SDK/OAuth flow
     const postBody =
       provider === 'google.com'
@@ -254,7 +327,10 @@ export class AuthService {
     );
 
     const data = await res.json();
-    if (!res.ok) throw new UnauthorizedException(data.error?.message ?? 'OAuth login failed');
+    if (!res.ok)
+      throw new UnauthorizedException(
+        data.error?.message ?? 'OAuth login failed',
+      );
     return data as FirebaseAuthResponse;
   }
 

@@ -20,6 +20,7 @@ import { User } from 'src/user/entities/user.entity';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -28,7 +29,7 @@ export class AuthController {
     private authService: AuthService,
     private usersService: UsersService,
     @Inject('FIREBASE_ADMIN') private firebaseApp: App,
-  ) { }
+  ) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user with email and password' })
@@ -49,6 +50,7 @@ export class AuthController {
   }
 
   @Post('send-reset-mail')
+  @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
   @ApiOperation({ summary: 'Step 1: verify the email and send a 4-digit code' })
   @ApiBody({ type: ForgotPasswordDto })
   async sendResetMail(@Body() dto: ForgotPasswordDto) {
@@ -56,17 +58,27 @@ export class AuthController {
   }
 
   @Post('validate-reset-mail')
-  @ApiOperation({ summary: 'Step 2: verify the code, receive a resetPassToken' })
+  @Throttle({ default: { limit: 5, ttl: 5 * 60_000 } })
+  @ApiOperation({
+    summary: 'Step 2: verify the code, receive a resetPassToken',
+  })
   @ApiBody({ type: VerifyOtpDto })
   async validateResetMail(@Body() dto: VerifyOtpDto) {
     return this.authService.validate_reset_mail(dto.email, dto.otp);
   }
 
   @Post('reset-password')
-  @ApiOperation({ summary: 'Step 3: reset the password using email + resetPassToken' })
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  @ApiOperation({
+    summary: 'Step 3: reset the password using email + resetPassToken',
+  })
   @ApiBody({ type: ResetPasswordDto })
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.reset_password(dto.email, dto.newPassword, dto.resetPassToken);
+    return this.authService.reset_password(
+      dto.email,
+      dto.newPassword,
+      dto.resetPassToken,
+    );
   }
 
   @Post('login')

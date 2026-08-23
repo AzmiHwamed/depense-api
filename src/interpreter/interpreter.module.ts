@@ -8,6 +8,7 @@ import { InterpreterTurn } from './entities/interpreter-turn.entity';
 import { InterpreterAiService } from './interpreter-ai.service';
 import { InterpreterController } from './interpreter.controller';
 import { InterpreterService } from './interpreter.service';
+import { GuestInterpreterController } from './guest-interpreter.controller';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { InterpreterService } from './interpreter.service';
     AuthModule,
     UserModule,
   ],
-  controllers: [InterpreterController],
+  controllers: [InterpreterController, GuestInterpreterController],
   providers: [InterpreterAiService, InterpreterService],
+  exports: [InterpreterAiService],
 })
 export class InterpreterModule {}

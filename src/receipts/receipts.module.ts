@@ -9,17 +9,18 @@ import { ReceiptsService } from './receipts.service';
 import { UserModule } from 'src/user/user.module';
 import { CurrencyModule } from 'src/currency/currency.module';
 import { ExpenseCategory } from 'src/expense-category/entities/expense-category.entity';
+import { MerchantMatchService } from './merchant-match.service';
+import { GuestReceiptsController } from './guest-receipts.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Receipt, ReceiptItem , ExpenseCategory]),
+    TypeOrmModule.forFeature([Receipt, ReceiptItem, ExpenseCategory]),
     HttpModule.register({ timeout: 100000 }),
     UserModule,
     CurrencyModule,
-
   ],
-  controllers: [ReceiptsController],
-  providers: [ReceiptsService, ReceiptExtractionService],
+  controllers: [ReceiptsController, GuestReceiptsController],
+  providers: [ReceiptsService, ReceiptExtractionService, MerchantMatchService],
   exports: [ReceiptsService],
 })
 export class ReceiptsModule {}

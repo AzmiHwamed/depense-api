@@ -235,4 +235,26 @@ export class UsersService {
     const user = await this.findOne(id);
     await this.usersRepo.remove(user);
   }
+
+  async deleteOwnAccount(user: User, confirmEmail: string) {
+    if (confirmEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+      throw new BadRequestException('Email confirmation does not match');
+    }
+
+    await this.usersRepo.manager.transaction(async (manager) => {
+      await manager.createQueryBuilder().delete().from('payments').where('userId = :id', { id: user.id }).execute();
+      await manager.createQueryBuilder().delete().from('notifications').where('userId = :id', { id: user.id }).execute();
+      await manager.createQueryBuilder().delete().from('device_tokens').where('userId = :id', { id: user.id }).execute();
+      await manager.createQueryBuilder().delete().from('chat_conversations').where('userId = :uid', { uid: user.firebaseUid }).execute();
+      await manager.delete(User, user.id);
+    });
+
+    try {
+      await getAuth(this.firebaseApp).deleteUser(user.firebaseUid);
+    } catch (error) {
+      this.logger.error(`SQL account deleted but Firebase deletion failed for ${user.firebaseUid}: ${(error as Error).message}`);
+      throw new BadRequestException('Account data was deleted, but authentication cleanup failed. Please contact support.');
+    }
+    return { deleted: true };
+  }
 }

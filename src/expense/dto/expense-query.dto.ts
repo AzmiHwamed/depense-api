@@ -2,6 +2,10 @@ import { IsOptional, IsUUID, IsDateString, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ExpenseQueryDto {
+  @ApiPropertyOptional({ description: 'Filter by trip' })
+  @IsOptional()
+  @IsUUID()
+  tripId?: string;
   @ApiPropertyOptional({ example: '2026-07-01T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()

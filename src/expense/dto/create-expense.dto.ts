@@ -15,6 +15,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateExpenseDto {
+  @ApiPropertyOptional({ description: 'Trip this expense belongs to' })
+  @IsOptional()
+  @IsUUID()
+  tripId?: string;
   @ApiProperty({
     example: 42.5,
     description: 'Expense amount, must be positive',

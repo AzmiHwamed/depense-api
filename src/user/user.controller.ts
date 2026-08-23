@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   UseGuards,
   Body,
   UploadedFile,
@@ -25,6 +26,7 @@ import { CurrentUser } from 'src/auth/current-user.decorator';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { UsersService } from './user.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 
 @ApiTags('Users')
@@ -121,6 +123,13 @@ async updateProfile(
    image
  );
 
+}
+
+@UseGuards(FirebaseAuthGuard)
+@Delete('me')
+@ApiBearerAuth()
+deleteAccount(@CurrentUser() user: User, @Body() dto: DeleteAccountDto) {
+  return this.usersService.deleteOwnAccount(user, dto.confirmEmail);
 }
 
 }
