@@ -38,6 +38,8 @@ const COUNTRY_IGNORE_KEYS = [
   'capital',
   'currency',
   'currencyId',
+  'language',
+  'languageId',
   'isActive',
   'createdAt',
   'updatedAt',
@@ -56,6 +58,14 @@ export class CountryController {
   @ApiResponse({ status: 200, type: [Country] })
   findAll() {
     return this.countryService.findAll();
+  }
+
+  @Get(':id/preferences')
+  @ApiBearerAuth()
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @ApiOperation({ summary: 'Get the default currency and language for a country' })
+  getPreferences(@Param('id') id: string) {
+    return this.countryService.getPreferences(id);
   }
 
   @Get(':id')

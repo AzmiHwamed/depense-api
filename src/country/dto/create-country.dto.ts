@@ -42,6 +42,11 @@ export class CreateCountryDto {
   @IsUUID()
   currencyId?: string;
 
+  @ApiProperty({ description: 'Default language DB id', required: false })
+  @IsOptional()
+  @IsUUID()
+  languageId?: string;
+
   @ApiProperty({ example: true, required: false })
   @IsOptional()
   @IsBoolean()

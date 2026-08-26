@@ -8,10 +8,11 @@ import { CurrencyModule } from '../currency/currency.module';
 import { TranslationModule } from 'src/translation/translation.module';
 import { TranslationService } from 'src/translation/translation.service';
 import { UserModule } from 'src/user/user.module';
+import { Language } from '../language/entities/language.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Country, Currency]),
+    TypeOrmModule.forFeature([Country, Currency, Language]),
     CurrencyModule,
     TranslationModule,
     UserModule,

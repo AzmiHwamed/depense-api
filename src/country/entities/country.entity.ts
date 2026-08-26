@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Currency } from '../../currency/entities/currency.entity';
+import { Language } from '../../language/entities/language.entity';
 
 @Entity('countries')
 export class Country {
@@ -42,6 +43,13 @@ export class Country {
 
   @Column({ nullable: true })
   currencyId: string;
+
+  @ManyToOne(() => Language, { nullable: true, eager: true })
+  @JoinColumn({ name: 'languageId' })
+  language: Language;
+
+  @Column({ nullable: true })
+  languageId: string;
 
   @Column({ default: true })
   isActive: boolean;

@@ -27,6 +27,16 @@ export class CountryService {
     return country;
   }
 
+  async getPreferences(id: string) {
+    const country = await this.findOne(id);
+
+    return {
+      countryId: country.id,
+      currency: country.currency ?? null,
+      language: country.language ?? null,
+    };
+  }
+
   async create(dto: CreateCountryDto): Promise<Country> {
     const country = this.countryRepository.create(dto);
     return this.countryRepository.save(country);
