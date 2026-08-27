@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseFilePipeBuilder,
   Patch,
@@ -124,6 +126,7 @@ export class ReceiptsController {
   }
 
   @Post('receipt-recommendations/:receiptId')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get category and description recommendations',
   })

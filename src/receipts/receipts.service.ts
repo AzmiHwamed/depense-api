@@ -16,6 +16,19 @@ import {
   NOTIFICATION_EVENT,
   NotificationDispatchEvent,
 } from 'src/notification/notification.events';
+import { isAxiosError } from 'axios';
+
+const DEFAULT_EXPENSE_CATEGORIES = [
+  { name: 'Groceries', description: 'Food and household supermarket purchases', icon: 'shopping-cart', color: '#22C55E' },
+  { name: 'Dining', description: 'Restaurants, cafés, and food delivery', icon: 'utensils', color: '#F97316' },
+  { name: 'Transportation', description: 'Fuel, taxis, public transport, and vehicle costs', icon: 'car', color: '#3B82F6' },
+  { name: 'Accommodation', description: 'Hotels, rentals, and lodging', icon: 'hotel', color: '#8B5CF6' },
+  { name: 'Shopping', description: 'Clothing, electronics, gifts, and general retail', icon: 'shopping-bag', color: '#EC4899' },
+  { name: 'Entertainment', description: 'Activities, attractions, events, and recreation', icon: 'ticket', color: '#EAB308' },
+  { name: 'Health', description: 'Pharmacy, medical, and personal care expenses', icon: 'heart-pulse', color: '#EF4444' },
+  { name: 'Utilities', description: 'Phone, internet, electricity, and recurring services', icon: 'receipt', color: '#64748B' },
+  { name: 'Other', description: 'Expenses that do not fit another category', icon: 'circle-ellipsis', color: '#6B7280' },
+];
 
 @Injectable()
 export class ReceiptsService {
@@ -135,9 +148,20 @@ export class ReceiptsService {
       throw new NotFoundException('Receipt not found');
     }
 
-    const categories = await this.categoryRepo.find({
+    let categories = await this.categoryRepo.find({
       where: { userId },
     });
+
+    if (categories.length === 0) {
+      await this.categoryRepo.upsert(
+        DEFAULT_EXPENSE_CATEGORIES.map((category) => ({ ...category, userId })),
+        ['userId', 'name'],
+      );
+      categories = await this.categoryRepo.find({
+        where: { userId },
+        order: { name: 'ASC' },
+      });
+    }
 
     const expenseData = {
       merchant: receipt.merchant,
@@ -147,16 +171,29 @@ export class ReceiptsService {
       items: receipt.items,
     };
 
-    const [categoryRecommendation, descriptionRecommendation] =
-      await Promise.all([
-        this.extractionService.recommendExpenseType(categories, expenseData),
-        this.extractionService.recommendExpenseDescription(expenseData),
-      ]);
-
-    return {
-      categoryRecommendation,
-      descriptionRecommendation,
-    };
+    try {
+      return await this.extractionService.recommendExpense(
+        categories,
+        expenseData,
+      );
+    } catch (error) {
+      if (isAxiosError(error)) {
+        const upstreamStatus = error.response?.status ?? 502;
+        return {
+          categoryRecommendation: null,
+          descriptionRecommendation: null,
+          recommendationError: {
+            code: upstreamStatus === 429 ? 'AI_QUOTA_EXHAUSTED' : 'AI_SERVICE_ERROR',
+            message:
+              upstreamStatus === 429
+                ? 'AI recommendation quota is temporarily exhausted. Please retry later.'
+                : 'AI recommendations are temporarily unavailable.',
+            retryAfter: error.response?.headers?.['retry-after'] ?? null,
+          },
+        };
+      }
+      throw error;
+    }
   }
 
   private async withConvertedAmounts(

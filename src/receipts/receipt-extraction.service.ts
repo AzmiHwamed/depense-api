@@ -63,6 +63,24 @@ export class ReceiptExtractionService {
     return data;
   }
 
+  async recommendExpense(
+    expenseTypes: any[],
+    expense: any,
+  ): Promise<{
+    categoryRecommendation: any | null;
+    descriptionRecommendation: any | null;
+  }> {
+    const { data } = await this.httpService.axiosRef.post(
+      `${this.baseUrl}/ai/recommend-expense`,
+      {
+        expense_types: expenseTypes,
+        expense,
+      },
+    );
+
+    return data;
+  }
+
   async extract(file: Express.Multer.File): Promise<OcrExtractionResultDto> {
     const form = new FormData();
     // Adjust the field name below ("file") to whatever the FastAPI
