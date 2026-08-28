@@ -278,35 +278,68 @@ export class ExploreService {
       throw new ServiceUnavailableException(
         'Google Maps API key is not configured.',
       );
-    const response = await fetch(
-      'https://places.googleapis.com/v1/places:searchNearby',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask':
-            'places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.primaryType,places.types,places.photos',
-        },
-        body: JSON.stringify({
-          includedTypes: DISCOVERY_TYPES,
-          maxResultCount: 20,
-          rankPreference: 'DISTANCE',
-          languageCode,
-          locationRestriction: {
-            circle: { center: { latitude, longitude }, radius },
-          },
-        }),
+    const requestBody = JSON.stringify({
+      includedTypes: DISCOVERY_TYPES,
+      maxResultCount: 20,
+      rankPreference: 'DISTANCE',
+      languageCode,
+      locationRestriction: {
+        circle: { center: { latitude, longitude }, radius },
       },
-    );
+    });
+
+    let response: Response | null = null;
+    let networkError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        response = await fetch(
+          'https://places.googleapis.com/v1/places:searchNearby',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': apiKey,
+              'X-Goog-FieldMask':
+                'places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.primaryType,places.types,places.photos',
+            },
+            body: requestBody,
+            signal: AbortSignal.timeout(12_000),
+          },
+        );
+        if (response.ok || (response.status < 500 && response.status !== 429)) {
+          break;
+        }
+      } catch (error) {
+        networkError = error;
+      }
+
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
+
+    if (!response) {
+      this.logger.error(
+        `Google Nearby Search network failure: ${networkError instanceof Error ? networkError.message : 'unknown error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Nearby search is temporarily unavailable because Google Places could not be reached.',
+      );
+    }
     const payload = (await response.json()) as {
       places?: GooglePlace[];
       error?: { message?: string };
     };
-    if (!response.ok)
-      throw new BadGatewayException(
-        payload.error?.message ?? 'Unable to search nearby places.',
+    if (!response.ok) {
+      const upstreamMessage =
+        payload.error?.message ?? 'Unable to search nearby places.';
+      this.logger.error(
+        `Google Nearby Search failed (${response.status}): ${upstreamMessage}`,
       );
+      throw new BadGatewayException(
+        `Google Places rejected the nearby search (${response.status}): ${upstreamMessage}`,
+      );
+    }
     const places = payload.places ?? [];
     const placesWithPhotos = places.filter((place) =>
       place.photos?.some((photo) => Boolean(photo.name)),
