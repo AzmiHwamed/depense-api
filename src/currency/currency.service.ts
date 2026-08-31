@@ -6,7 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateCurrencyDto } from './dto/create-currency.dto';
 import { UpdateCurrencyDto } from './dto/update-currency.dto';
 import { Currency } from './entities/currency.entity';
@@ -19,6 +19,43 @@ interface FrankfurterCurrency {
   start_date: string;
   [key: string]: any;
 }
+
+interface FrankfurterLatestRates {
+  amount: number;
+  base: string;
+  date: string;
+  rates: Record<string, number>;
+}
+
+interface FrankfurterTimeSeries {
+  amount: number;
+  base: string;
+  start_date: string;
+  end_date: string;
+  rates: Record<string, Record<string, number>>;
+}
+
+const POPULAR_CURRENCY_CODES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'JPY',
+  'CHF',
+  'CAD',
+  'AUD',
+  'CNY',
+] as const;
+
+const CURRENCY_BADGES: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+  CHF: 'Fr',
+  CAD: '$',
+  AUD: 'A$',
+  CNY: '¥',
+};
 
 @Injectable()
 export class CurrencyService implements OnModuleInit {
@@ -161,5 +198,110 @@ export class CurrencyService implements OnModuleInit {
       rate: data.rate,
       date: data.date,
     };
+  }
+
+  async getPopularRates(baseCurrencyId: string) {
+    if (!baseCurrencyId) {
+      throw new BadRequestException(
+        'Set a home currency before requesting popular exchange rates',
+      );
+    }
+
+    const base = await this.findOne(baseCurrencyId);
+    const targetCodes = POPULAR_CURRENCY_CODES.filter(
+      (code) => code !== base.code,
+    );
+    const query = new URLSearchParams({
+      base: base.code,
+      symbols: targetCodes.join(','),
+    });
+
+    let data: FrankfurterLatestRates;
+    let previousData: FrankfurterTimeSeries;
+    try {
+      const res = await fetch(`${this.frankfurterUrl}/latest?${query}`);
+      if (!res.ok) {
+        throw new Error(`Frankfurter responded with status ${res.status}`);
+      }
+      data = await res.json();
+
+      const latestDate = new Date(`${data.date}T00:00:00.000Z`);
+      latestDate.setUTCDate(latestDate.getUTCDate() - 21);
+      const historyStart = latestDate.toISOString().slice(0, 10);
+      const historyRes = await fetch(
+        `${this.frankfurterUrl}/${historyStart}..${data.date}?${query}`,
+      );
+      if (!historyRes.ok) {
+        throw new Error(
+          `Frankfurter responded with status ${historyRes.status}`,
+        );
+      }
+      previousData = await historyRes.json();
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch popular rates for ${base.code}: ${(error as Error).message}`,
+      );
+      throw new BadRequestException(
+        'Unable to retrieve exchange rates from the external rate service',
+      );
+    }
+
+    const currencies = await this.currencyRepo.find({
+      where: { code: In(Object.keys(data.rates)), isActive: true },
+    });
+    const currenciesByCode = new Map(
+      currencies.map((currency) => [currency.code, currency]),
+    );
+    const previousDates = Object.keys(previousData.rates)
+      .filter((date) => date < data.date)
+      .sort()
+      .slice(-4);
+
+    if (previousDates.length < 4) {
+      throw new BadRequestException(
+        'Four previous exchange-rate dates are not available for comparison',
+      );
+    }
+    const previousDate = previousDates.at(-1)!;
+    const previousRates = previousData.rates[previousDate];
+
+    return targetCodes.flatMap((code) => {
+      const currency = currenciesByCode.get(code);
+      const rate = data.rates[code];
+      const previousRate = previousRates?.[code];
+      if (
+        !currency ||
+        typeof rate !== 'number' ||
+        typeof previousRate !== 'number'
+      ) {
+        return [];
+      }
+
+      const change = rate - previousRate;
+      const changePercent = (change / previousRate) * 100;
+      const historicalRates = previousDates
+        .map((date) => previousData.rates[date]?.[code])
+        .filter((historicalRate): historicalRate is number =>
+          Number.isFinite(historicalRate),
+        );
+
+      if (historicalRates.length < 4) {
+        return [];
+      }
+      const formattedRate = Number(rate.toFixed(6)).toString();
+
+      return [
+        {
+          currencyId: currency.id,
+          currencyCode: currency.code,
+          label: currency.code,
+          badgeText: CURRENCY_BADGES[currency.code] ?? currency.code,
+          conversionText: `1 ${base.code} = ${formattedRate} ${currency.code}`,
+          rate,
+          changePercent: Number(changePercent.toFixed(4)),
+          rateHistory: [...historicalRates, rate],
+        },
+      ];
+    });
   }
 }

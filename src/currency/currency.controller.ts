@@ -24,6 +24,8 @@ import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard
 import { Translate } from 'src/translation/translate.decorator';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { AdminGuard } from 'src/auth/admin.guard';
+import { CurrentUser } from 'src/auth/current-user.decorator';
+import { User } from 'src/user/entities/user.entity';
 
 const CURRENCY_IGNORE_KEYS = [
   'id',
@@ -58,6 +60,16 @@ export class CurrencyController {
       dto.fromCurrencyId,
       dto.toCurrencyId,
     );
+  }
+
+  @Get('popular-rates')
+  @ApiBearerAuth()
+  @UseGuards(FirebaseAuthGuard)
+  @ApiOperation({
+    summary: "List popular exchange rates in the authenticated user's currency",
+  })
+  getPopularRates(@CurrentUser() user: User) {
+    return this.currencyService.getPopularRates(user.currencyId);
   }
 
   @Get(':id')
