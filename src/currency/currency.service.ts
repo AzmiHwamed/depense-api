@@ -205,24 +205,64 @@ export class CurrencyService implements OnModuleInit {
 
     const results = await Promise.allSettled(
       targetCodes.map(async (code) => {
-        const res = await fetch(
-          `${this.frankfurterV2Url}/rate/${base.code}/${code}`,
-        );
-        if (!res.ok) {
-          throw new Error(`${base.code}/${code} returned status ${res.status}`);
+        const pairUrl = `${this.frankfurterV2Url}/rate/${base.code}/${code}`;
+        const currentRes = await fetch(pairUrl);
+        if (!currentRes.ok) {
+          throw new Error(
+            `${base.code}/${code} returned status ${currentRes.status}`,
+          );
         }
-        const data: { rate: number } = await res.json();
-        if (!Number.isFinite(data.rate)) {
+        const current: { date: string; rate: number } = await currentRes.json();
+        if (!Number.isFinite(current.rate) || !current.date) {
           throw new Error(`${base.code}/${code} returned an invalid rate`);
         }
-        return { code, rate: data.rate };
+
+        const currentDate = new Date(`${current.date}T00:00:00.000Z`);
+        const historicalDates = [28, 21, 14, 7].map((daysAgo) => {
+          const date = new Date(currentDate);
+          date.setUTCDate(date.getUTCDate() - daysAgo);
+          return date.toISOString().slice(0, 10);
+        });
+        const historicalResults = await Promise.allSettled(
+          historicalDates.map(async (date) => {
+            const historicalRes = await fetch(`${pairUrl}?date=${date}`);
+            if (!historicalRes.ok) {
+              throw new Error(
+                `historical rate ${date} returned status ${historicalRes.status}`,
+              );
+            }
+            const historical: { rate: number } = await historicalRes.json();
+            if (!Number.isFinite(historical.rate)) {
+              throw new Error(`historical rate ${date} was invalid`);
+            }
+            return historical.rate;
+          }),
+        );
+        const historicalRates = historicalResults.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : [],
+        );
+        const previousRate = historicalRates.at(-1);
+        const changePercent =
+          typeof previousRate === 'number' && previousRate !== 0
+            ? ((current.rate - previousRate) / previousRate) * 100
+            : 0;
+
+        return {
+          code,
+          rate: current.rate,
+          changePercent: Number(changePercent.toFixed(4)),
+          rateHistory: [...historicalRates, current.rate],
+        };
       }),
     );
 
-    const rates = new Map<string, number>();
+    const rates = new Map<
+      string,
+      { rate: number; changePercent: number; rateHistory: number[] }
+    >();
     results.forEach((result, index) => {
       if (result.status === 'fulfilled') {
-        rates.set(result.value.code, result.value.rate);
+        rates.set(result.value.code, result.value);
         return;
       }
       this.logger.warn(
@@ -238,11 +278,12 @@ export class CurrencyService implements OnModuleInit {
 
     return targetCodes.flatMap((code) => {
       const currency = currenciesByCode.get(code);
-      const rate = rates.get(code);
-      if (!currency || typeof rate !== 'number') {
+      const rateData = rates.get(code);
+      if (!currency || !rateData) {
         return [];
       }
 
+      const { rate, changePercent, rateHistory } = rateData;
       const formattedRate = Number(rate.toFixed(6)).toString();
 
       return [
@@ -253,8 +294,8 @@ export class CurrencyService implements OnModuleInit {
           badgeText: CURRENCY_BADGES[currency.code] ?? currency.code,
           conversionText: `1 ${base.code} = ${formattedRate} ${currency.code}`,
           rate,
-          changePercent: 0,
-          rateHistory: Array(5).fill(rate),
+          changePercent,
+          rateHistory,
         },
       ];
     });
