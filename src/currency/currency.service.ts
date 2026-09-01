@@ -20,21 +20,6 @@ interface FrankfurterCurrency {
   [key: string]: any;
 }
 
-interface FrankfurterLatestRates {
-  amount: number;
-  base: string;
-  date: string;
-  rates: Record<string, number>;
-}
-
-interface FrankfurterTimeSeries {
-  amount: number;
-  base: string;
-  start_date: string;
-  end_date: string;
-  rates: Record<string, Record<string, number>>;
-}
-
 const POPULAR_CURRENCY_CODES = [
   'USD',
   'EUR',
@@ -60,7 +45,6 @@ const CURRENCY_BADGES: Record<string, string> = {
 @Injectable()
 export class CurrencyService implements OnModuleInit {
   private readonly logger = new Logger(CurrencyService.name);
-  private readonly frankfurterUrl = 'https://api.frankfurter.dev/v1';
   private readonly frankfurterV2Url = 'https://api.frankfurter.dev/v2';
 
   constructor(
@@ -211,83 +195,54 @@ export class CurrencyService implements OnModuleInit {
     const targetCodes = POPULAR_CURRENCY_CODES.filter(
       (code) => code !== base.code,
     );
-    const query = new URLSearchParams({
-      base: base.code,
-      symbols: targetCodes.join(','),
+
+    const currencies = await this.currencyRepo.find({
+      where: { code: In([...targetCodes]), isActive: true },
+    });
+    const currenciesByCode = new Map(
+      currencies.map((currency) => [currency.code, currency]),
+    );
+
+    const results = await Promise.allSettled(
+      targetCodes.map(async (code) => {
+        const res = await fetch(
+          `${this.frankfurterV2Url}/rate/${base.code}/${code}`,
+        );
+        if (!res.ok) {
+          throw new Error(`${base.code}/${code} returned status ${res.status}`);
+        }
+        const data: { rate: number } = await res.json();
+        if (!Number.isFinite(data.rate)) {
+          throw new Error(`${base.code}/${code} returned an invalid rate`);
+        }
+        return { code, rate: data.rate };
+      }),
+    );
+
+    const rates = new Map<string, number>();
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        rates.set(result.value.code, result.value.rate);
+        return;
+      }
+      this.logger.warn(
+        `Failed to fetch popular rate ${base.code}/${targetCodes[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+      );
     });
 
-    let data: FrankfurterLatestRates;
-    let previousData: FrankfurterTimeSeries;
-    try {
-      const res = await fetch(`${this.frankfurterUrl}/latest?${query}`);
-      if (!res.ok) {
-        throw new Error(`Frankfurter responded with status ${res.status}`);
-      }
-      data = await res.json();
-
-      const latestDate = new Date(`${data.date}T00:00:00.000Z`);
-      latestDate.setUTCDate(latestDate.getUTCDate() - 21);
-      const historyStart = latestDate.toISOString().slice(0, 10);
-      const historyRes = await fetch(
-        `${this.frankfurterUrl}/${historyStart}..${data.date}?${query}`,
-      );
-      if (!historyRes.ok) {
-        throw new Error(
-          `Frankfurter responded with status ${historyRes.status}`,
-        );
-      }
-      previousData = await historyRes.json();
-    } catch (error) {
-      this.logger.error(
-        `Failed to fetch popular rates for ${base.code}: ${(error as Error).message}`,
-      );
+    if (rates.size === 0) {
       throw new BadRequestException(
         'Unable to retrieve exchange rates from the external rate service',
       );
     }
 
-    const currencies = await this.currencyRepo.find({
-      where: { code: In(Object.keys(data.rates)), isActive: true },
-    });
-    const currenciesByCode = new Map(
-      currencies.map((currency) => [currency.code, currency]),
-    );
-    const previousDates = Object.keys(previousData.rates)
-      .filter((date) => date < data.date)
-      .sort()
-      .slice(-4);
-
-    if (previousDates.length < 4) {
-      throw new BadRequestException(
-        'Four previous exchange-rate dates are not available for comparison',
-      );
-    }
-    const previousDate = previousDates.at(-1)!;
-    const previousRates = previousData.rates[previousDate];
-
     return targetCodes.flatMap((code) => {
       const currency = currenciesByCode.get(code);
-      const rate = data.rates[code];
-      const previousRate = previousRates?.[code];
-      if (
-        !currency ||
-        typeof rate !== 'number' ||
-        typeof previousRate !== 'number'
-      ) {
+      const rate = rates.get(code);
+      if (!currency || typeof rate !== 'number') {
         return [];
       }
 
-      const change = rate - previousRate;
-      const changePercent = (change / previousRate) * 100;
-      const historicalRates = previousDates
-        .map((date) => previousData.rates[date]?.[code])
-        .filter((historicalRate): historicalRate is number =>
-          Number.isFinite(historicalRate),
-        );
-
-      if (historicalRates.length < 4) {
-        return [];
-      }
       const formattedRate = Number(rate.toFixed(6)).toString();
 
       return [
@@ -298,8 +253,8 @@ export class CurrencyService implements OnModuleInit {
           badgeText: CURRENCY_BADGES[currency.code] ?? currency.code,
           conversionText: `1 ${base.code} = ${formattedRate} ${currency.code}`,
           rate,
-          changePercent: Number(changePercent.toFixed(4)),
-          rateHistory: [...historicalRates, rate],
+          changePercent: 0,
+          rateHistory: Array(5).fill(rate),
         },
       ];
     });
