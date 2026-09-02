@@ -125,16 +125,41 @@ export class ExploreService {
       throw new BadGatewayException('Google Places returned no coordinates.');
     }
 
-    const description = await this.interpreterAi.describePlace({
-      name: place.name,
-      latitude,
-      longitude,
-      address: place.address,
-      placeType:
-        place.primaryTypeDisplayName?.text ?? place.primaryType ?? undefined,
-      languageCode,
-    });
-    return { description };
+    try {
+      const description = await this.interpreterAi.describePlace({
+        name: place.name,
+        latitude,
+        longitude,
+        address: place.address,
+        placeType:
+          place.primaryTypeDisplayName?.text ?? place.primaryType ?? undefined,
+        languageCode,
+      });
+      return { description, source: 'ai' as const };
+    } catch (error) {
+      this.logger.warn(
+        `AI place description unavailable for ${placeId}; using Google Places metadata: ${error instanceof Error ? error.message : String(error)}`,
+      );
+
+      const fallback = place.editorialSummary?.text?.trim() || place.narration;
+      if (languageCode.toLowerCase().startsWith('en')) {
+        return { description: fallback, source: 'place-metadata' as const };
+      }
+
+      try {
+        const translated = await this.interpreterAi.translate(
+          fallback,
+          place.editorialSummary?.languageCode ?? 'en',
+          languageCode,
+        );
+        return { description: translated, source: 'place-metadata' as const };
+      } catch (translationError) {
+        this.logger.warn(
+          `Fallback place-description translation unavailable for ${placeId}: ${translationError instanceof Error ? translationError.message : String(translationError)}`,
+        );
+        return { description: fallback, source: 'place-metadata' as const };
+      }
+    }
   }
 
   async findNearby(dto: NearbySearchDto) {

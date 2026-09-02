@@ -18,6 +18,7 @@ import { CreatePaymentPlanDto } from './dto/create-payment-plan.dto';
 import { UpdatePaymentPlanDto } from './dto/update-payment-plan.dto';
 import { PaymentPlan } from './entities/payment-plan.entity';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../user/entities/user.entity';
 import { PaymentPlanService } from './payment-plan.service.spec';
@@ -29,6 +30,8 @@ export class PaymentPlanController {
 
   // ── Admin-style CRUD, raw prices in base currency ──────────
   @Get('raw')
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'List all plans with raw base-currency prices (admin view)',
   })
@@ -38,6 +41,8 @@ export class PaymentPlanController {
   }
 
   @Get('raw/:id')
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get one plan by DB id, raw base-currency price' })
   @ApiResponse({ status: 200, type: PaymentPlan })
   findOneRaw(@Param('id') id: string) {
@@ -45,6 +50,8 @@ export class PaymentPlanController {
   }
 
   @Post()
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new payment plan' })
   @ApiResponse({ status: 201, type: PaymentPlan })
   create(@Body() dto: CreatePaymentPlanDto) {
@@ -52,6 +59,8 @@ export class PaymentPlanController {
   }
 
   @Patch(':id')
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a payment plan' })
   @ApiResponse({ status: 200, type: PaymentPlan })
   update(@Param('id') id: string, @Body() dto: UpdatePaymentPlanDto) {
@@ -59,6 +68,8 @@ export class PaymentPlanController {
   }
 
   @Delete(':id')
+  @UseGuards(FirebaseAuthGuard, AdminGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a payment plan' })
   remove(@Param('id') id: string) {
     return this.planService.remove(id);
