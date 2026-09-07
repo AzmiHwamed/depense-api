@@ -32,7 +32,7 @@ import { Translate } from 'src/translation/translate.decorator';
 const PROFILE_IGNORE_KEYS = [
   'id', 'email', 'displayName', 'photoUrl', 'provider', 'role', 'isActive',
   'currencyId', 'currentCountryId', 'languageId', 'code', 'alpha2Code',
-  'alpha3Code', 'flag', 'createdAt', 'updatedAt',
+  'alpha3Code', 'flag', 'createdAt', 'updatedAt', 'subscriptionStatus',
 ];
 
 
