@@ -47,6 +47,7 @@ export class NotificationController {
 
   @Post()
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: NOTIFICATION_IGNORE_KEYS })
   @ApiOperation({ summary: 'Create a notification for the authenticated user (and optionally push it immediately)' })
   @ApiResponse({ status: 201, description: 'Notification created', type: Notification })
   create(@CurrentUser() user: User, @Body() dto: CreateNotificationDto) {
@@ -55,6 +56,7 @@ export class NotificationController {
 
   @Post('check-country')
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: NOTIFICATION_IGNORE_KEYS })
   @ApiOperation({ summary: 'Compare the detected country with the user declared country' })
   @ApiResponse({ status: 201, description: 'Country checked; notification created when different' })
   checkCountry(@CurrentUser() user: User, @Body() dto: CheckCountryDto) {
@@ -87,6 +89,7 @@ export class NotificationController {
 
   @Patch(':id')
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: NOTIFICATION_IGNORE_KEYS })
   @ApiOperation({ summary: 'Update a notification belonging to the authenticated user' })
   @ApiParam({ name: 'id', description: 'Notification UUID' })
   @ApiResponse({ status: 200, description: 'Notification updated', type: Notification })
@@ -101,6 +104,7 @@ export class NotificationController {
 
   @Patch(':id/read')
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: NOTIFICATION_IGNORE_KEYS })
   @ApiOperation({ summary: 'Mark a notification as read' })
   @ApiParam({ name: 'id', description: 'Notification UUID' })
   @ApiResponse({ status: 200, description: 'Notification marked as read', type: Notification })

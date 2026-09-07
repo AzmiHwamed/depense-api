@@ -27,6 +27,13 @@ import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { UsersService } from './user.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
+import { Translate } from 'src/translation/translate.decorator';
+
+const PROFILE_IGNORE_KEYS = [
+  'id', 'email', 'displayName', 'photoUrl', 'provider', 'role', 'isActive',
+  'currencyId', 'currentCountryId', 'languageId', 'code', 'alpha2Code',
+  'alpha3Code', 'flag', 'createdAt', 'updatedAt',
+];
 
 
 @ApiTags('Users')
@@ -43,6 +50,7 @@ constructor(
 @UseGuards(FirebaseAuthGuard)
 @Get('me')
 @ApiBearerAuth()
+@Translate({ ignoreKeys: PROFILE_IGNORE_KEYS })
 getProfile(
  @CurrentUser() user: User
 ){
@@ -54,6 +62,7 @@ getProfile(
 @UseGuards(FirebaseAuthGuard)
 @Patch('me')
 @ApiBearerAuth()
+@Translate({ ignoreKeys: PROFILE_IGNORE_KEYS })
 @ApiConsumes('multipart/form-data')
 @ApiBody({
   schema: {

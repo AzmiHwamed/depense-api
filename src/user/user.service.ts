@@ -23,10 +23,12 @@ import { LanguageService } from 'src/language/language.service';
 import { Country } from 'src/country/entities/country.entity';
 import { Language } from 'src/language/entities/language.entity';
 import { Payment, PaymentStatus } from 'src/payment/entities/payment.entity';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private readonly appBaseUrl: string;
 
   constructor(
     @InjectRepository(User) private usersRepo: Repository<User>,
@@ -34,8 +36,23 @@ export class UsersService {
     @InjectRepository(Language) private languageRepo: Repository<Language>,
     @InjectRepository(Payment) private paymentRepo: Repository<Payment>,
     private currencyService: CurrencyService,
+    config: ConfigService,
     @Inject('FIREBASE_ADMIN') private firebaseApp: App,
-  ) { }
+  ) {
+    this.appBaseUrl = config
+      .get<string>('APP_BASE_URL', 'http://localhost:3000')
+      .replace(/\/+$/, '');
+  }
+
+  private normalizePhotoUrl(user: User): User {
+    if (user.photoURL) {
+      user.photoURL = user.photoURL.replace(
+        /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?=\/files\/)/i,
+        this.appBaseUrl,
+      );
+    }
+    return user;
+  }
 
   private async repairMissingSubscriptionEnd(user: User): Promise<User> {
     if (
@@ -55,9 +72,10 @@ export class UsersService {
     for (const payment of payments) {
       if (!payment.plan?.durationMonths) continue;
       const paidAt = new Date(payment.createdAt);
-      const startsAt = calculatedEnd && calculatedEnd > paidAt
-        ? new Date(calculatedEnd)
-        : paidAt;
+      const startsAt =
+        calculatedEnd && calculatedEnd > paidAt
+          ? new Date(calculatedEnd)
+          : paidAt;
       startsAt.setMonth(startsAt.getMonth() + payment.plan.durationMonths);
       calculatedEnd = startsAt;
     }
@@ -81,9 +99,14 @@ export class UsersService {
    * fetches (e.g. after `getIdToken(true)` or their next natural refresh),
    * not on the token that's currently in use.
    */
-  private async syncRoleClaim(firebaseUid: string, role: UserRole): Promise<void> {
+  private async syncRoleClaim(
+    firebaseUid: string,
+    role: UserRole,
+  ): Promise<void> {
     try {
-      await getAuth(this.firebaseApp).setCustomUserClaims(firebaseUid, { role });
+      await getAuth(this.firebaseApp).setCustomUserClaims(firebaseUid, {
+        role,
+      });
     } catch (err) {
       this.logger.error(
         `Failed to sync role claim for ${firebaseUid}: ${(err as Error).message}`,
@@ -91,59 +114,62 @@ export class UsersService {
     }
   }
 
-
   async updateProfile(
-  id: string,
-  dto: UpdateProfileDto,
-  image?: Express.Multer.File,
-): Promise<User> {
-  const user = await this.findOne(id);
+    id: string,
+    dto: UpdateProfileDto,
+    image?: Express.Multer.File,
+  ): Promise<User> {
+    const user = await this.findOne(id);
 
-  if (image) {
-    if (user.provider !== AuthProvider.PASSWORD) {
-      throw new BadRequestException(
-        'Profile image can only be changed for password accounts',
-      );
+    if (image) {
+      if (user.provider !== AuthProvider.PASSWORD) {
+        throw new BadRequestException(
+          'Profile image can only be changed for password accounts',
+        );
+      }
+      user.photoURL = `${this.appBaseUrl}/files/profile-images/${encodeURIComponent(image.filename)}`;
     }
-    user.photoURL = `http://localhost:3000/files/profile-images/${image.filename}`;
-  }
 
-  if (dto.displayName !== undefined) {
-    user.displayName = dto.displayName;
-  }
-
-  if (dto.currencyId) {
-    const currency = await this.currencyService.findOne(dto.currencyId);
-    if (!currency) {
-      throw new BadRequestException('Currency not found');
+    if (dto.displayName !== undefined) {
+      user.displayName = dto.displayName;
     }
-    // Set BOTH — the relation object and the FK column — so TypeORM's
-    // eager-relation persistence doesn't clobber the column with the
-    // stale relation object it loaded in `findOne`.
-    user.currency = currency;
-    user.currencyId = dto.currencyId;
-  }
 
-  if (dto.currentCountryId) {
-    const country = await this.countryRepo.findOne({ where: { id: dto.currentCountryId } });
-    if (!country) {
-      throw new BadRequestException('Country not found');
+    if (dto.currencyId) {
+      const currency = await this.currencyService.findOne(dto.currencyId);
+      if (!currency) {
+        throw new BadRequestException('Currency not found');
+      }
+      // Set BOTH — the relation object and the FK column — so TypeORM's
+      // eager-relation persistence doesn't clobber the column with the
+      // stale relation object it loaded in `findOne`.
+      user.currency = currency;
+      user.currencyId = dto.currencyId;
     }
-    user.currentCountry = country;
-    user.currentCountryId = dto.currentCountryId;
-  }
 
-  if (dto.languageId) {
-    const language = await this.languageRepo.findOne({ where: { id: dto.languageId } });
-    if (!language) {
-      throw new BadRequestException('Language not found');
+    if (dto.currentCountryId) {
+      const country = await this.countryRepo.findOne({
+        where: { id: dto.currentCountryId },
+      });
+      if (!country) {
+        throw new BadRequestException('Country not found');
+      }
+      user.currentCountry = country;
+      user.currentCountryId = dto.currentCountryId;
     }
-    user.language = language;
-    user.languageId = dto.languageId;
-  }
 
-  return await this.usersRepo.save(user);
-}
+    if (dto.languageId) {
+      const language = await this.languageRepo.findOne({
+        where: { id: dto.languageId },
+      });
+      if (!language) {
+        throw new BadRequestException('Language not found');
+      }
+      user.language = language;
+      user.languageId = dto.languageId;
+    }
+
+    return await this.usersRepo.save(user);
+  }
   async findOrCreateFromFirebase(decoded: DecodedIdToken): Promise<User> {
     let user = await this.usersRepo.findOne({
       where: { firebaseUid: decoded.uid },
@@ -181,8 +207,9 @@ export class UsersService {
     return saved;
   }
 
-  findById(id: string) {
-    return this.usersRepo.findOne({ where: { id } });
+  async findById(id: string) {
+    const user = await this.usersRepo.findOne({ where: { id } });
+    return user ? this.normalizePhotoUrl(user) : null;
   }
 
   // ── Admin CRUD ────────────────────────────────
@@ -195,13 +222,20 @@ export class UsersService {
       skip: (page - 1) * limit,
       take: limit,
     });
-    return { data, total, page, limit };
+    return {
+      data: data.map((user) => this.normalizePhotoUrl(user)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: string): Promise<User> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException(`User ${id} not found`);
-    return this.repairMissingSubscriptionEnd(user);
+    return this.normalizePhotoUrl(
+      await this.repairMissingSubscriptionEnd(user),
+    );
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {
@@ -242,18 +276,42 @@ export class UsersService {
     }
 
     await this.usersRepo.manager.transaction(async (manager) => {
-      await manager.createQueryBuilder().delete().from('payments').where('userId = :id', { id: user.id }).execute();
-      await manager.createQueryBuilder().delete().from('notifications').where('userId = :id', { id: user.id }).execute();
-      await manager.createQueryBuilder().delete().from('device_tokens').where('userId = :id', { id: user.id }).execute();
-      await manager.createQueryBuilder().delete().from('chat_conversations').where('userId = :uid', { uid: user.firebaseUid }).execute();
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from('payments')
+        .where('userId = :id', { id: user.id })
+        .execute();
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from('notifications')
+        .where('userId = :id', { id: user.id })
+        .execute();
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from('device_tokens')
+        .where('userId = :id', { id: user.id })
+        .execute();
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from('chat_conversations')
+        .where('userId = :uid', { uid: user.firebaseUid })
+        .execute();
       await manager.delete(User, user.id);
     });
 
     try {
       await getAuth(this.firebaseApp).deleteUser(user.firebaseUid);
     } catch (error) {
-      this.logger.error(`SQL account deleted but Firebase deletion failed for ${user.firebaseUid}: ${(error as Error).message}`);
-      throw new BadRequestException('Account data was deleted, but authentication cleanup failed. Please contact support.');
+      this.logger.error(
+        `SQL account deleted but Firebase deletion failed for ${user.firebaseUid}: ${(error as Error).message}`,
+      );
+      throw new BadRequestException(
+        'Account data was deleted, but authentication cleanup failed. Please contact support.',
+      );
     }
     return { deleted: true };
   }

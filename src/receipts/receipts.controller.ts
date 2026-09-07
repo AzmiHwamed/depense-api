@@ -62,6 +62,10 @@ const RECEIPT_IGNORE_KEYS = [
   'updatedAt',
   'receiptId',
   'rawText',
+  'googlePlaceId',
+  'googleMapsUri',
+  'merchantLatitude',
+  'merchantLongitude',
 ];
 
 @ApiTags('Receipts')
@@ -127,6 +131,7 @@ export class ReceiptsController {
 
   @Post('receipt-recommendations/:receiptId')
   @HttpCode(HttpStatus.OK)
+  @Translate({ ignoreKeys: RECEIPT_IGNORE_KEYS })
   @ApiOperation({
     summary: 'Get category and description recommendations',
   })
@@ -187,6 +192,7 @@ export class ReceiptsController {
   }
 
   @Patch(':id')
+  @Translate({ ignoreKeys: RECEIPT_IGNORE_KEYS })
   @ApiOperation({
     summary: 'Update receipt',
   })

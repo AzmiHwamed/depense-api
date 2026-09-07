@@ -21,6 +21,12 @@ import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../user/entities/user.entity';
+import { Translate } from 'src/translation/translate.decorator';
+
+const PAYMENT_PLAN_IGNORE_KEYS = [
+  'id', 'durationMonths', 'basePrice', 'convertedPrice', 'baseCurrencyId',
+  'currencyId', 'code', 'isActive', 'createdAt', 'updatedAt',
+];
 import { PaymentPlanService } from './payment-plan.service.spec';
 
 @ApiTags('Payment Plans')
@@ -79,6 +85,7 @@ export class PaymentPlanController {
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @Get()
+  @Translate({ ignoreKeys: PAYMENT_PLAN_IGNORE_KEYS })
   @ApiOperation({
     summary: "List active plans, priced in the calling user's currency",
   })

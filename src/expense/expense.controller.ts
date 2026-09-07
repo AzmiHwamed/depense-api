@@ -39,11 +39,18 @@ const EXPENSE_IGNORE_KEYS = [
   'amount',
   'date',
   'currencyId',
+  'code',
   'categoryId',
   'userId',
   'createdAt',
   'updatedAt',
   'shop', 
+  'googlePlaceId',
+  'googleMapsUri',
+  'merchantAddress',
+  'merchantLatitude',
+  'merchantLongitude',
+  'merchantMatchConfidence',
   'categoryColor',
   'period',
   'total',
@@ -76,6 +83,7 @@ export class ExpenseController {
   }
 
   @Post()
+  @Translate({ ignoreKeys: EXPENSE_IGNORE_KEYS })
   @ApiOperation({ summary: 'Create a new expense for the authenticated user' })
   @ApiResponse({ status: 201, description: 'Expense created', type: Expense })
   @ApiResponse({ status: 404, description: 'Expense category not found' })
@@ -85,6 +93,7 @@ export class ExpenseController {
     return this.expenseService.create(user.id, dto);
   }
  @Post('from-receipt')
+  @Translate({ ignoreKeys: EXPENSE_IGNORE_KEYS })
   @ApiOperation({
     summary: 'Create an expense from a scanned receipt',
     description:

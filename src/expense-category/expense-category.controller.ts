@@ -37,6 +37,7 @@ export class ExpenseCategoryController {
 
   @Post()
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: EXPENSE_CATEGORY_IGNORE_KEYS })
   create(@CurrentUser() user: User, @Body() dto: CreateExpenseCategoryDto) {
     return this.expenseCategoryService.create(user.id, dto);
   }
@@ -57,6 +58,7 @@ export class ExpenseCategoryController {
 
   @Patch(':id')
   @ApiBearerAuth()
+  @Translate({ ignoreKeys: EXPENSE_CATEGORY_IGNORE_KEYS })
   update(
     @CurrentUser() user: User,
     @Param('id') id: string,

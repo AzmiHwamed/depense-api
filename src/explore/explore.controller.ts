@@ -34,8 +34,11 @@ export class ExploreController {
   @ApiOperation({
     summary: 'Find places near the authenticated user device location',
   })
-  findNearby(@Body() dto: NearbySearchDto) {
-    return this.service.findNearby(dto);
+  findNearby(@CurrentUser() user: User, @Body() dto: NearbySearchDto) {
+    return this.service.findNearby({
+      ...dto,
+      languageCode: user.language?.code ?? dto.languageCode ?? 'en',
+    });
   }
 
   @Post('check-in')
@@ -44,6 +47,12 @@ export class ExploreController {
       'Use the current location to recommend and notify about a nearby place',
   })
   checkIn(@CurrentUser() user: User, @Body() dto: LocationCheckInDto) {
-    return this.service.checkIn(user.id, dto);
+    return this.service.checkIn(user.id, {
+      ...dto,
+      languageCode:
+        (user.language?.code as 'en' | 'fr' | 'ar' | undefined) ??
+        dto.languageCode ??
+        'en',
+    });
   }
 }

@@ -34,11 +34,8 @@ const COUNTRY_IGNORE_KEYS = [
   'alpha2Code',
   'alpha3Code',
   'flag',
-  'region',
-  'capital',
-  'currency',
+  'code',
   'currencyId',
-  'language',
   'languageId',
   'isActive',
   'createdAt',
@@ -63,6 +60,7 @@ export class CountryController {
   @Get(':id/preferences')
   @ApiBearerAuth()
   @UseGuards(OptionalFirebaseAuthGuard)
+  @Translate({ ignoreKeys: COUNTRY_IGNORE_KEYS })
   @ApiOperation({ summary: 'Get the default currency and language for a country' })
   getPreferences(@Param('id') id: string) {
     return this.countryService.getPreferences(id);

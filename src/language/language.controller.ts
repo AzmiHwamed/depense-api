@@ -20,6 +20,10 @@ import { LanguageService } from './language.service';
 import { CreateLanguageDto } from './dto/create-language.dto';
 
 import { UpdateLanguageDto } from './dto/update-language.dto';
+import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard';
+import { Translate } from 'src/translation/translate.decorator';
+
+const LANGUAGE_IGNORE_KEYS = ['id', 'code'];
 
 @ApiTags('Languages')
 @Controller('languages')
@@ -34,16 +38,22 @@ export class LanguageController {
   }
 
   @Get()
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @Translate({ ignoreKeys: LANGUAGE_IGNORE_KEYS })
   findAll() {
     return this.service.findAll();
   }
 
   @Get('search')
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @Translate({ ignoreKeys: LANGUAGE_IGNORE_KEYS })
   search(@Query('q') q: string) {
     return this.service.search(q);
   }
 
   @Get(':id')
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @Translate({ ignoreKeys: LANGUAGE_IGNORE_KEYS })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
