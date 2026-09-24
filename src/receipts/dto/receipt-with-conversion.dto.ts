@@ -17,4 +17,5 @@ export interface ReceiptWithConversion extends Omit<Receipt, 'items'> {
   convertedTax: number | null;
   convertedTotal: number | null;
   items: ReceiptItemWithConversion[];
+  otherText: string[];
 }

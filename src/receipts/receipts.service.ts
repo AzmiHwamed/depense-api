@@ -42,7 +42,7 @@ export class ReceiptsService {
     private readonly extractionService: ReceiptExtractionService,
     private readonly currencyService: CurrencyService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   /** Extract a receipt for guest preview without writing any SQL rows. */
   async extractWithoutSave(file: Express.Multer.File): Promise<ReceiptWithConversion> {
@@ -104,7 +104,7 @@ export class ReceiptsService {
       tax: result.tax ?? null,
       total: result.total ?? null,
       paymentMethod: result.payment_method ?? null,
-      rawText: result.raw_text ?? null,
+      rawText: result.raw_text?.toString() ?? null,
       originalFileName: file.originalname,
       imageMimeType: file.mimetype,
 
@@ -137,7 +137,18 @@ export class ReceiptsService {
       ),
     );
 
-    return this.withConvertedAmounts(saved, user);
+
+    const res = await this.withConvertedAmounts(saved, user);
+    let otherText: string[] = [];
+    if (res.rawText) {
+      otherText = res.rawText
+        .toString()
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+
+    return { ...res, otherText };
   }
   async getReceiptRecommendations(userId: string, receiptId: string) {
     const receipt = await this.receiptRepo.findOne({
@@ -215,12 +226,12 @@ export class ReceiptsService {
       receiptCurrency.id === user.currencyId
         ? 1
         : (
-            await this.currencyService.convert(
-              1,
-              receiptCurrency.id,
-              user.currencyId,
-            )
-          ).convertedAmount;
+          await this.currencyService.convert(
+            1,
+            receiptCurrency.id,
+            user.currencyId,
+          )
+        ).convertedAmount;
 
     return this.attachConverted(receipt, rate);
   }
@@ -236,6 +247,7 @@ export class ReceiptsService {
 
     return {
       ...receipt,
+      otherText: receipt.rawText ? receipt.rawText.split('\n') : [],
       convertedSubtotal: convert(receipt.subtotal),
       convertedTax: convert(receipt.tax),
       convertedTotal: convert(receipt.total),
