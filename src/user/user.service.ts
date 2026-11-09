@@ -70,13 +70,14 @@ export class UsersService {
 
     let calculatedEnd: Date | null = null;
     for (const payment of payments) {
-      if (!payment.plan?.durationMonths) continue;
+      if (!payment.plan?.tokenCount) continue;
       const paidAt = new Date(payment.createdAt);
       const startsAt =
         calculatedEnd && calculatedEnd > paidAt
           ? new Date(calculatedEnd)
           : paidAt;
-      startsAt.setMonth(startsAt.getMonth() + payment.plan.durationMonths);
+      // Legacy repair path: historic purchases no longer grant time-based access.
+      // Token balances are granted atomically when a payment succeeds.
       calculatedEnd = startsAt;
     }
 

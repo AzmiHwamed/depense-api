@@ -24,7 +24,7 @@ import { User } from '../user/entities/user.entity';
 import { Translate } from 'src/translation/translate.decorator';
 
 const PAYMENT_PLAN_IGNORE_KEYS = [
-  'id', 'durationMonths', 'basePrice', 'convertedPrice', 'baseCurrencyId',
+  'id', 'tokenCount', 'basePrice', 'convertedPrice', 'baseCurrencyId',
   'currencyId', 'code', 'isActive', 'createdAt', 'updatedAt',
 ];
 import { PaymentPlanService } from './payment-plan.service.spec';

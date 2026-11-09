@@ -44,6 +44,10 @@ export class Payment {
   @Column()
   paymentPlanId: string;
 
+  /** Token quantity agreed at checkout, independent of later deal edits. */
+  @Column({ type: 'int', default: 0 })
+  tokenCount: number;
+
   // Amount actually charged, in the currency actually charged —
   // snapshot at time of payment, so historical records don't shift
   // if exchange rates or plan prices change later.

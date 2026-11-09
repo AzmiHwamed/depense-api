@@ -9,20 +9,23 @@ import { AdminUserController } from './admin-user.controller';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminStatsController } from './admin-stats.controller';
 import { AdminBootstrapService } from './admin-bootstrap.service';
+import { TokenWalletService } from './token-wallet.service';
 import { CurrencyModule } from '../currency/currency.module';
 import { CountryModule } from '../country/country.module';
 import { LanguageModule } from 'src/language/language.module';
 import { LanguageService } from 'src/language/language.service';
 import { CountryService } from 'src/country/country.service';
 import { Language } from 'src/language/entities/language.entity';
+import { AiServicePrice } from './entities/ai-service-price.entity';
+import { AdminAiServicePriceController } from './admin-ai-service-price.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Country, Payment, Language]),
+    TypeOrmModule.forFeature([User, Country, Payment, Language, AiServicePrice]),
     CurrencyModule,
   ],
-  controllers: [UserController, AdminUserController, AdminStatsController],
-  providers: [UsersService, AdminStatsService, AdminBootstrapService],
-  exports: [UsersService],
+  controllers: [UserController, AdminUserController, AdminStatsController, AdminAiServicePriceController],
+  providers: [UsersService, AdminStatsService, AdminBootstrapService, TokenWalletService],
+  exports: [UsersService, TokenWalletService],
 })
 export class UserModule {}

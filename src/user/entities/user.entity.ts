@@ -84,7 +84,11 @@ export class User {
   @Column({ nullable: true })
   languageId: string;
 
-  // ── Trial / Subscription fields ──────────────
+  /** Wallet used for metered AI features. New accounts receive 30 tokens. */
+  @Column({ type: 'int', default: 30 })
+  tokenBalance: number;
+
+  // Legacy subscription fields are retained for existing payment history.
   @Column({
     type: 'enum',
     enum: SubscriptionStatus,

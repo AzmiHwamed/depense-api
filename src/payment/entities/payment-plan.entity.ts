@@ -20,8 +20,12 @@ export class PaymentPlan {
   @Column({ nullable: true })
   description: string;
 
-  @Column({ type: 'int' })
-  durationMonths: number; // e.g. 3
+  @Column({ type: 'int', default: 1 })
+  tokenCount: number;
+
+  /** Legacy schema compatibility; token packages do not use a duration. */
+  @Column({ type: 'int', default: 0 })
+  durationMonths: number;
 
   // Base price is always stored in one reference currency (USD) —
   // everything gets converted from this at request time.

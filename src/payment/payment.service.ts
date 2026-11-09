@@ -18,7 +18,7 @@ import { MoyasarService } from './providers/moyasar.service';
 import { IPaymentProviderStrategy } from './providers/payment-provider.interface';
 import { UsersService } from 'src/user/user.service';
 import { CurrencyService } from 'src/currency/currency.service';
-import { SubscriptionStatus, User } from 'src/user/entities/user.entity';
+import { User } from 'src/user/entities/user.entity';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   NOTIFICATION_EVENT,
@@ -94,6 +94,7 @@ export class PaymentService {
     const payment = this.paymentRepo.create({
       userId: user.id,
       paymentPlanId: plan.id,
+      tokenCount: Number(plan.tokenCount),
       amount: amountInUserCurrency,
       currencyId: user.currency.id,
       status: PaymentStatus.PENDING,
@@ -210,16 +211,13 @@ export class PaymentService {
         });
         if (!user) throw new NotFoundException('Payment user not found');
 
-        const now = new Date();
-        const currentEnd = user.subscriptionEndsAt
-          ? new Date(user.subscriptionEndsAt)
-          : null;
-        const startsAt = currentEnd && currentEnd > now ? currentEnd : now;
-        startsAt.setMonth(
-          startsAt.getMonth() + lockedPayment.plan.durationMonths,
-        );
-        user.subscriptionEndsAt = startsAt;
-        user.subscriptionStatus = SubscriptionStatus.ACTIVE;
+        // Credit the checkout snapshot, not the live package. Admins can
+        // safely change a deal while a customer is completing payment. The
+        // fallback supports a pending checkout started immediately before the
+        // snapshot migration was deployed.
+        const purchasedTokens = Number(lockedPayment.tokenCount) || Number(lockedPayment.plan?.tokenCount);
+        lockedPayment.tokenCount = purchasedTokens;
+        user.tokenBalance = Number(user.tokenBalance ?? 0) + purchasedTokens;
         await manager.save(User, user);
       }
 
@@ -235,7 +233,7 @@ export class PaymentService {
         NOTIFICATION_EVENT,
         new NotificationDispatchEvent(
           'Payment successful',
-          `Your ${outcome.payment.plan.name} subscription is now active`,
+          `${outcome.payment.tokenCount} AI tokens were added to your wallet`,
           outcome.payment.userId,
           {
             type: 'payment.succeeded',

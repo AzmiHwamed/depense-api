@@ -10,19 +10,19 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreatePaymentPlanDto {
-  @ApiProperty({ example: 'Quarterly Plan' })
+  @ApiProperty({ example: '100 AI tokens' })
   @IsString()
   name: string;
 
-  @ApiProperty({ example: 'Access for 3 months', required: false })
+  @ApiProperty({ example: 'A token package for AI services', required: false })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiProperty({ example: 3 })
+  @ApiProperty({ example: 100, description: 'Tokens granted after successful payment' })
   @IsInt()
   @Min(1)
-  durationMonths: number;
+  tokenCount: number;
 
   @ApiProperty({ example: 10, description: 'Price in the base currency' })
   @IsNumber()

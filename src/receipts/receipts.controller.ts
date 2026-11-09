@@ -40,6 +40,7 @@ import { User } from 'src/user/entities/user.entity';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { MerchantMatchDto } from './dto/merchant-match.dto';
 import { MerchantMatchService } from './merchant-match.service';
+import { TokenWalletService } from 'src/user/token-wallet.service';
 
 const RECEIPT_IGNORE_KEYS = [
   'id',
@@ -76,6 +77,7 @@ export class ReceiptsController {
   constructor(
     private readonly receiptsService: ReceiptsService,
     private readonly merchantMatchService: MerchantMatchService,
+    private readonly wallet: TokenWalletService,
   ) {}
 
   @Post('merchant-match')
@@ -126,7 +128,14 @@ export class ReceiptsController {
     image: Express.Multer.File,
     @CurrentUser() user: User,
   ) {
-    return this.receiptsService.extractAndSave(image, user);
+    const tokenCost = await this.wallet.getCost('receiptScan');
+    await this.wallet.spend(user.id, tokenCost, 'receipt scanning');
+    try {
+      return await this.receiptsService.extractAndSave(image, user);
+    } catch (error) {
+      await this.wallet.refund(user.id, tokenCost).catch(() => undefined);
+      throw error;
+    }
   }
 
   @Post('receipt-recommendations/:receiptId')

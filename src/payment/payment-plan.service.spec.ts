@@ -15,7 +15,7 @@ export interface PlanWithConvertedPrice {
   id: string;
   name: string;
   description: string;
-  durationMonths: number;
+  tokenCount: number;
   price: number;
   currency: { id: string; code: string; name: string };
   isActive: boolean;
@@ -31,7 +31,7 @@ export class PaymentPlanService {
 
   // ── CRUD, all keyed by your own DB id ────────────────────
   findAllRaw(): Promise<PaymentPlan[]> {
-    return this.planRepo.find({ order: { durationMonths: 'ASC' } });
+    return this.planRepo.find({ order: { tokenCount: 'ASC' } });
   }
 
   async findOneRaw(id: string): Promise<PaymentPlan> {
@@ -79,7 +79,7 @@ export class PaymentPlanService {
   ): Promise<PlanWithConvertedPrice[]> {
     const plans = await this.planRepo.find({
       where: { isActive: true },
-      order: { durationMonths: 'ASC' },
+      order: { tokenCount: 'ASC' },
     });
 
     const targetCurrency = await this.currencyRepo.findOne({
@@ -96,7 +96,7 @@ export class PaymentPlanService {
             id: plan.id,
             name: plan.name,
             description: plan.description,
-            durationMonths: plan.durationMonths,
+            tokenCount: plan.tokenCount,
             price: Number(plan.basePrice),
             currency: {
               id: targetCurrency.id,
@@ -117,7 +117,7 @@ export class PaymentPlanService {
           id: plan.id,
           name: plan.name,
           description: plan.description,
-          durationMonths: plan.durationMonths,
+          tokenCount: plan.tokenCount,
           price: converted.convertedAmount,
           currency: {
             id: targetCurrency.id,
