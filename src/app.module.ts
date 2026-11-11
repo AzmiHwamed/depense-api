@@ -29,6 +29,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { InterpreterModule } from './interpreter/interpreter.module';
 import { ExploreModule } from './explore/explore.module';
 import { TripModule } from './trip/trip.module';
+import { SearchModule } from './search/search.module';
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
@@ -92,6 +93,7 @@ import { TripModule } from './trip/trip.module';
     InterpreterModule,
     ExploreModule,
     TripModule,
+    SearchModule,
   ],
   providers: [
     {
