@@ -15,6 +15,7 @@ import { Country } from 'src/country/entities/country.entity';
 import { Repository } from 'typeorm';
 import { CreateTripDto, UpdateTripDto } from './dto/trip.dto';
 import { Trip } from './entities/trip.entity';
+import { TokenWalletService } from 'src/user/token-wallet.service';
 
 @Injectable()
 export class TripService {
@@ -29,6 +30,7 @@ export class TripService {
     private readonly countries: Repository<Country>,
     private readonly currencies: CurrencyService,
     private readonly http: HttpService,
+    private readonly wallet: TokenWalletService,
     config: ConfigService,
   ) {
     this.aiUrl = config.get('OCR_SERVICE_URL', 'http://localhost:8005');
@@ -103,6 +105,8 @@ export class TripService {
     const trip = await this.findOne(userId, id);
     const financials = await this.withFinancials(trip);
     const categories = await this.categories.find({ where: { userId } });
+    const tokenCost = await this.wallet.getCost('tripPlan');
+    await this.wallet.spend(userId, tokenCost, 'AI trip planning');
     try {
       const response = await firstValueFrom(
         this.http.post(`${this.aiUrl}/ai/trip-plan`, {
@@ -198,6 +202,7 @@ export class TripService {
       await this.trips.save(trip);
       return this.withFinancials(trip);
     } catch (error: any) {
+      await this.wallet.refund(userId, tokenCost).catch(() => undefined);
       const upstream = error?.response?.data;
       throw new BadGatewayException(
         upstream?.detail ??

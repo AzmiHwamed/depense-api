@@ -18,13 +18,14 @@ import { CountryService } from 'src/country/country.service';
 import { Language } from 'src/language/entities/language.entity';
 import { AiServicePrice } from './entities/ai-service-price.entity';
 import { AdminAiServicePriceController } from './admin-ai-service-price.controller';
+import { AiServicePriceController } from './ai-service-price.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Country, Payment, Language, AiServicePrice]),
     CurrencyModule,
   ],
-  controllers: [UserController, AdminUserController, AdminStatsController, AdminAiServicePriceController],
+  controllers: [UserController, AdminUserController, AdminStatsController, AdminAiServicePriceController, AiServicePriceController],
   providers: [UsersService, AdminStatsService, AdminBootstrapService, TokenWalletService],
   exports: [UsersService, TokenWalletService],
 })

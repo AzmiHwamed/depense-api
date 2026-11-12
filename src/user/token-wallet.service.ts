@@ -8,6 +8,7 @@ const DEFAULT_AI_TOKEN_COST: Record<AiServiceKey, number> = {
   receiptScan: 3,
   interpreterTurn: 5,
   textTranslation: 1,
+  tripPlan: 8,
 } as const;
 
 @Injectable()

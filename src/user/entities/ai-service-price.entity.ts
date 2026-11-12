@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-export const AI_SERVICES = ['receiptScan', 'interpreterTurn', 'textTranslation'] as const;
+export const AI_SERVICES = ['receiptScan', 'interpreterTurn', 'textTranslation', 'tripPlan'] as const;
 export type AiServiceKey = (typeof AI_SERVICES)[number];
 
 @Entity('ai_service_prices')
