@@ -51,9 +51,7 @@ export class PaymentService {
         strategy: this.konnectService,
       };
     }
-    if (
-      ['SAR', 'USD', 'AED', 'EUR', 'KWD', 'BHD', 'OMR'].includes(currencyCode)
-    ) {
+    if (currencyCode === 'SAR' || currencyCode === 'USD') {
       return {
         provider: PaymentProvider.MOYASSER,
         strategy: this.moyasarService,
@@ -80,23 +78,32 @@ export class PaymentService {
       throw new BadRequestException('User has no base currency configured');
     }
 
-    // convert() expects currency row IDs and returns a conversion object,
-    // not a bare number — pull out convertedAmount
-    const conversion = await this.currencyService.convert(
-      plan.basePrice,
-      plan.baseCurrencyId,
-      user.currencyId,
-    );
-    const amountInUserCurrency = conversion.convertedAmount;
+    // Provider routing is deliberately limited: Tunisian dinars go through
+    // Konnect, Saudi riyals through Moyasar, and every other locale checks
+    // out with Moyasar in USD.
+    const checkoutCurrency =
+      user.currency.code === 'TND' || user.currency.code === 'SAR'
+        ? user.currency
+        : await this.currencyService.findByCode('USD');
+    const amountInCheckoutCurrency =
+      plan.baseCurrencyId === checkoutCurrency.id
+        ? Number(plan.basePrice)
+        : (
+            await this.currencyService.convert(
+              plan.basePrice,
+              plan.baseCurrencyId,
+              checkoutCurrency.id,
+            )
+          ).convertedAmount;
 
-    const { provider, strategy } = this.resolveProvider(user.currency.code);
+    const { provider, strategy } = this.resolveProvider(checkoutCurrency.code);
 
     const payment = this.paymentRepo.create({
       userId: user.id,
       paymentPlanId: plan.id,
       tokenCount: Number(plan.tokenCount),
-      amount: amountInUserCurrency,
-      currencyId: user.currency.id,
+      amount: amountInCheckoutCurrency,
+      currencyId: checkoutCurrency.id,
       status: PaymentStatus.PENDING,
       provider,
     });
@@ -110,8 +117,8 @@ export class PaymentService {
     try {
       result = await strategy.initPayment({
         paymentId: payment.id,
-        amount: amountInUserCurrency,
-        currencyCode: user.currency.code,
+        amount: amountInCheckoutCurrency,
+        currencyCode: checkoutCurrency.code,
         description: `Payment for ${plan.name}`,
         customerEmail: user.email,
         customerFirstName: firstName || undefined,
@@ -137,10 +144,7 @@ export class PaymentService {
     return { paymentId: payment.id, checkoutUrl: result.checkoutUrl };
   }
 
-  async handleWebhook(
-    provider: PaymentProvider,
-    paymentReference: string,
-  ) {
+  async handleWebhook(provider: PaymentProvider, paymentReference: string) {
     if (!paymentReference) {
       throw new BadRequestException('Missing payment reference');
     }
@@ -152,7 +156,9 @@ export class PaymentService {
           ? this.moyasarService
           : null;
     if (!strategy) {
-      throw new BadRequestException(`Unsupported payment provider: ${provider}`);
+      throw new BadRequestException(
+        `Unsupported payment provider: ${provider}`,
+      );
     }
 
     // Moyasar callbacks contain our payment UUID, while Konnect sends its own
@@ -187,46 +193,50 @@ export class PaymentService {
           ? PaymentStatus.FAILED
           : PaymentStatus.PENDING;
 
-    const outcome = await this.paymentRepo.manager.transaction(async (manager) => {
-      const lockedPayment = await manager.findOne(Payment, {
-        where: { id: payment.id },
-        relations: { plan: true },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!lockedPayment) throw new NotFoundException('Payment not found');
-
-      // A concurrent/retried webhook may have completed while verification ran.
-      if (
-        lockedPayment.status === PaymentStatus.SUCCEEDED ||
-        lockedPayment.status === PaymentStatus.FAILED
-      ) {
-        return { payment: lockedPayment, activated: false };
-      }
-
-      lockedPayment.status = newStatus;
-      if (newStatus === PaymentStatus.SUCCEEDED) {
-        const user = await manager.findOne(User, {
-          where: { id: lockedPayment.userId },
+    const outcome = await this.paymentRepo.manager.transaction(
+      async (manager) => {
+        const lockedPayment = await manager.findOne(Payment, {
+          where: { id: payment.id },
+          relations: { plan: true },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!user) throw new NotFoundException('Payment user not found');
+        if (!lockedPayment) throw new NotFoundException('Payment not found');
 
-        // Credit the checkout snapshot, not the live package. Admins can
-        // safely change a deal while a customer is completing payment. The
-        // fallback supports a pending checkout started immediately before the
-        // snapshot migration was deployed.
-        const purchasedTokens = Number(lockedPayment.tokenCount) || Number(lockedPayment.plan?.tokenCount);
-        lockedPayment.tokenCount = purchasedTokens;
-        user.tokenBalance = Number(user.tokenBalance ?? 0) + purchasedTokens;
-        await manager.save(User, user);
-      }
+        // A concurrent/retried webhook may have completed while verification ran.
+        if (
+          lockedPayment.status === PaymentStatus.SUCCEEDED ||
+          lockedPayment.status === PaymentStatus.FAILED
+        ) {
+          return { payment: lockedPayment, activated: false };
+        }
 
-      const savedPayment = await manager.save(Payment, lockedPayment);
-      return {
-        payment: savedPayment,
-        activated: newStatus === PaymentStatus.SUCCEEDED,
-      };
-    });
+        lockedPayment.status = newStatus;
+        if (newStatus === PaymentStatus.SUCCEEDED) {
+          const user = await manager.findOne(User, {
+            where: { id: lockedPayment.userId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!user) throw new NotFoundException('Payment user not found');
+
+          // Credit the checkout snapshot, not the live package. Admins can
+          // safely change a deal while a customer is completing payment. The
+          // fallback supports a pending checkout started immediately before the
+          // snapshot migration was deployed.
+          const purchasedTokens =
+            Number(lockedPayment.tokenCount) ||
+            Number(lockedPayment.plan?.tokenCount);
+          lockedPayment.tokenCount = purchasedTokens;
+          user.tokenBalance = Number(user.tokenBalance ?? 0) + purchasedTokens;
+          await manager.save(User, user);
+        }
+
+        const savedPayment = await manager.save(Payment, lockedPayment);
+        return {
+          payment: savedPayment,
+          activated: newStatus === PaymentStatus.SUCCEEDED,
+        };
+      },
+    );
 
     if (outcome.activated) {
       this.eventEmitter.emit(
