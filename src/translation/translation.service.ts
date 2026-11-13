@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError } from 'axios';
@@ -43,7 +40,12 @@ export class TranslationService {
    */
   async translateText(
     text: string,
-    options: { target?: string; source?: string; user?: User } = {},
+    options: {
+      target?: string;
+      source?: string;
+      user?: User;
+      throwOnFailure?: boolean;
+    } = {},
   ): Promise<string> {
     const target = this.resolveTarget(options.user, options.target);
 
@@ -62,6 +64,7 @@ export class TranslationService {
       return data.translation;
     } catch (error) {
       this.logFailure(error, 'translateText');
+      if (options.throwOnFailure) throw error;
       return text; // fall back to original, untranslated text
     }
   }

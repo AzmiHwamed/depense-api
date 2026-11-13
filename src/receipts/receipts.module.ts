@@ -10,7 +10,6 @@ import { UserModule } from 'src/user/user.module';
 import { CurrencyModule } from 'src/currency/currency.module';
 import { ExpenseCategory } from 'src/expense-category/entities/expense-category.entity';
 import { MerchantMatchService } from './merchant-match.service';
-import { GuestReceiptsController } from './guest-receipts.controller';
 
 @Module({
   imports: [
@@ -19,7 +18,7 @@ import { GuestReceiptsController } from './guest-receipts.controller';
     UserModule,
     CurrencyModule,
   ],
-  controllers: [ReceiptsController, GuestReceiptsController],
+  controllers: [ReceiptsController],
   providers: [ReceiptsService, ReceiptExtractionService, MerchantMatchService],
   exports: [ReceiptsService],
 })

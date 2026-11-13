@@ -8,34 +8,24 @@ import { CurrentUser } from 'src/auth/current-user.decorator';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { OptionalFirebaseAuthGuard } from 'src/auth/optional-firebase-auth.guard';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { TokenWalletService } from 'src/user/token-wallet.service';
 
 @UseGuards(FirebaseAuthGuard)
 @Controller('translation')
 export class TranslationController {
-  constructor(private readonly translationService: TranslationService, private readonly wallet: TokenWalletService) {}
+  constructor(private readonly translationService: TranslationService) {}
 
   @Post('text')
   async translateText(
     @Body() dto: TranslateTextDto,
     @CurrentUser() user: User,
   ) {
-    const tokenCost = await this.wallet.getCost('textTranslation');
-    await this.wallet.spend(user.id, tokenCost, 'text translation');
-    try {
-      const translation = await this.translationService.translateText(
-        dto.text,
-        {
-          target: dto.target,
-          source: dto.source,
-          user,
-        },
-      );
-      return { translation };
-    } catch (error) {
-      await this.wallet.refund(user.id, tokenCost).catch(() => undefined);
-      throw error;
-    }
+    const translation = await this.translationService.translateText(dto.text, {
+      target: dto.target,
+      source: dto.source,
+      user,
+      throwOnFailure: true,
+    });
+    return { translation };
   }
 
   @Post('json')
