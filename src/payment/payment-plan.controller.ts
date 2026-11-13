@@ -24,8 +24,16 @@ import { User } from '../user/entities/user.entity';
 import { Translate } from 'src/translation/translate.decorator';
 
 const PAYMENT_PLAN_IGNORE_KEYS = [
-  'id', 'tokenCount', 'basePrice', 'convertedPrice', 'baseCurrencyId',
-  'currencyId', 'code', 'isActive', 'createdAt', 'updatedAt',
+  'id',
+  'tokenCount',
+  'basePrice',
+  'convertedPrice',
+  'baseCurrencyId',
+  'currencyId',
+  'code',
+  'isActive',
+  'createdAt',
+  'updatedAt',
 ];
 import { PaymentPlanService } from './payment-plan.service.spec';
 
@@ -81,17 +89,20 @@ export class PaymentPlanController {
     return this.planService.remove(id);
   }
 
-  // ── User-facing: plans converted to the caller's own currency ──
+  // ── User-facing: plans priced in the checkout currency ──
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
   @Get()
   @Translate({ ignoreKeys: PAYMENT_PLAN_IGNORE_KEYS })
   @ApiOperation({
-    summary: "List active plans, priced in the calling user's currency",
+    summary: 'List active plans priced in the checkout currency',
   })
   findAllForUser(@CurrentUser() user: User) {
-    // Falls back to plan's own base currency conversion target if user has none set
-    const targetCurrencyId = user.currencyId;
-    return this.planService.findAllInCurrency(targetCurrencyId);
+    const userCurrencyCode = user.currency?.code;
+    const checkoutCurrencyCode =
+      userCurrencyCode === 'TND' || userCurrencyCode === 'SAR'
+        ? userCurrencyCode
+        : 'USD';
+    return this.planService.findAllInCurrencyCode(checkoutCurrencyCode);
   }
 }

@@ -129,4 +129,16 @@ export class PaymentPlanService {
       }),
     );
   }
+
+  async findAllInCurrencyCode(
+    targetCurrencyCode: string,
+  ): Promise<PlanWithConvertedPrice[]> {
+    const currency = await this.currencyRepo.findOne({
+      where: { code: targetCurrencyCode },
+    });
+    if (!currency) {
+      throw new BadRequestException(`Currency ${targetCurrencyCode} not found`);
+    }
+    return this.findAllInCurrency(currency.id);
+  }
 }
